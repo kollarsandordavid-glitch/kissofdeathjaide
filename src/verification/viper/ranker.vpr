@@ -1,0 +1,2215 @@
+domain Float {
+    function f32_add(a: Real, b: Real): Real
+    function f32_sub(a: Real, b: Real): Real
+    function f32_mul(a: Real, b: Real): Real
+    function f32_div(a: Real, b: Real): Real
+    function f32_sqrt(a: Real): Real
+    function f32_clamp(val: Real, min_val: Real, max_val: Real): Real
+    function f32_min(a: Real, b: Real): Real
+    function f32_max(a: Real, b: Real): Real
+    function f32_abs(a: Real): Real
+    function f32_is_nan(a: Real): Bool
+    function f32_is_inf(a: Real): Bool
+    function f32_from_int(i: Int): Real
+    function f32_to_int(r: Real): Int
+    function int_to_f32(i: Int): Real
+    
+    axiom axiom_clamp_lower {
+        forall a: Real, lo: Real, hi: Real :: { f32_clamp(a, lo, hi) } a < lo ==> f32_clamp(a, lo, hi) == lo
+    }
+    
+    axiom axiom_clamp_upper {
+        forall a: Real, lo: Real, hi: Real :: { f32_clamp(a, lo, hi) } a > hi ==> f32_clamp(a, lo, hi) == hi
+    }
+    
+    axiom axiom_clamp_middle {
+        forall a: Real, lo: Real, hi: Real :: { f32_clamp(a, lo, hi) } lo <= a && a <= hi ==> f32_clamp(a, lo, hi) == a
+    }
+    
+    axiom axiom_sqrt_nonneg {
+        forall a: Real :: { f32_sqrt(a) } a >= 0.0 ==> f32_sqrt(a) >= 0.0
+    }
+    
+    axiom axiom_sqrt_square {
+        forall a: Real :: { f32_sqrt(a) } a >= 0.0 ==> f32_sqrt(a) * f32_sqrt(a) == a
+    }
+    
+    axiom axiom_f32_from_int_positive {
+        forall i: Int :: { f32_from_int(i) } i >= 0 ==> f32_from_int(i) >= 0.0
+    }
+    
+    axiom axiom_int_to_f32_positive {
+        forall i: Int :: { int_to_f32(i) } i >= 0 ==> int_to_f32(i) >= 0.0
+    }
+    
+    axiom axiom_f32_add_comm {
+        forall a: Real, b: Real :: { f32_add(a, b) } f32_add(a, b) == f32_add(b, a)
+    }
+    
+    axiom axiom_f32_mul_comm {
+        forall a: Real, b: Real :: { f32_mul(a, b) } f32_mul(a, b) == f32_mul(b, a)
+    }
+    
+    axiom axiom_f32_add_assoc {
+        forall a: Real, b: Real, c: Real :: { f32_add(a, f32_add(b, c)) } f32_add(a, f32_add(b, c)) == f32_add(f32_add(a, b), c)
+    }
+    
+    axiom axiom_f32_mul_assoc {
+        forall a: Real, b: Real, c: Real :: { f32_mul(a, f32_mul(b, c)) } f32_mul(a, f32_mul(b, c)) == f32_mul(f32_mul(a, b), c)
+    }
+}
+
+domain Hash {
+    function stableHash(data: Seq[Int], seed: Int): Int
+    function hash_xor(a: Int, b: Int): Int
+    function hash_mul(a: Int, b: Int): Int
+    function hash_add(a: Int, b: Int): Int
+    function popcount(x: Int): Int
+    
+    axiom axiom_stableHash_deterministic {
+        forall data: Seq[Int], seed: Int :: { stableHash(data, seed) } stableHash(data, seed) == stableHash(data, seed)
+    }
+    
+    axiom axiom_popcount_nonneg {
+        forall x: Int :: { popcount(x) } popcount(x) >= 0
+    }
+    
+    axiom axiom_popcount_zero {
+        popcount(0) == 0
+    }
+    
+    axiom axiom_hash_xor_self {
+        forall a: Int :: { hash_xor(a, a) } hash_xor(a, a) == 0
+    }
+}
+
+domain BitOps {
+    function bitwise_and(a: Int, b: Int): Int
+    function bitwise_or(a: Int, b: Int): Int
+    function bitwise_xor(a: Int, b: Int): Int
+    function bitwise_not(a: Int): Int
+    function left_shift(a: Int, n: Int): Int
+    function right_shift(a: Int, n: Int): Int
+    function min_int(a: Int, b: Int): Int
+    function max_int(a: Int, b: Int): Int
+    function int_abs(a: Int): Int
+    
+    axiom axiom_min_left {
+        forall a: Int, b: Int :: { min_int(a, b) } min_int(a, b) <= a
+    }
+    
+    axiom axiom_min_right {
+        forall a: Int, b: Int :: { min_int(a, b) } min_int(a, b) <= b
+    }
+    
+    axiom axiom_max_left {
+        forall a: Int, b: Int :: { max_int(a, b) } max_int(a, b) >= a
+    }
+    
+    axiom axiom_max_right {
+        forall a: Int, b: Int :: { max_int(a, b) } max_int(a, b) >= b
+    }
+    
+    axiom axiom_abs_nonneg {
+        forall a: Int :: { int_abs(a) } int_abs(a) >= 0
+    }
+    
+    axiom axiom_abs_positive {
+        forall a: Int :: { int_abs(a) } a >= 0 ==> int_abs(a) == a
+    }
+    
+    axiom axiom_abs_negative {
+        forall a: Int :: { int_abs(a) } a < 0 ==> int_abs(a) == -a
+    }
+}
+
+field ngram_weights_ptr: Seq[Real]
+field ngram_weights_len: Int
+field lsh_hash_params_ptr: Seq[Int]
+field lsh_hash_params_len: Int
+field num_hash_functions: Int
+field num_ngrams: Int
+field seed: Int
+field allocator_ref: Ref
+
+field tokens_ptr: Seq[Int]
+field tokens_len: Int
+field score_val: Real
+field position: Int
+field anchor_hash: Int
+field anchor_flag: Bool
+
+field bitset_bits_ptr: Seq[Int]
+field bitset_bits_len: Int
+field bitset_capacity: Int
+
+field tensor_data_ptr: Seq[Real]
+field tensor_data_len: Int
+field tensor_shape: Seq[Int]
+field tensor_rank: Int
+
+field ssi_segments: Seq[Ref]
+field ssi_size: Int
+field ssi_capacity: Int
+
+field hashmap_keys: Seq[Int]
+field hashmap_values: Seq[Int]
+field hashmap_size: Int
+field hashmap_capacity: Int
+
+field arr_seq: Seq[Real]
+field arr_len: Int
+
+field idx_seq: Seq[Int]
+field idx_len: Int
+
+predicate valid_slice_real(ptr: Ref, len: Int) {
+    acc(ptr.arr_seq, write) && acc(ptr.arr_len, write) && ptr.arr_len == len && len >= 0 && |ptr.arr_seq| == len
+}
+
+predicate valid_slice_int(ptr: Ref, len: Int) {
+    acc(ptr.idx_seq, write) && acc(ptr.idx_len, write) && ptr.idx_len == len && len >= 0 && |ptr.idx_seq| == len
+}
+
+predicate valid_ranker(r: Ref) {
+    acc(r.ngram_weights_ptr, write) && acc(r.ngram_weights_len, write) &&
+    acc(r.lsh_hash_params_ptr, write) && acc(r.lsh_hash_params_len, write) &&
+    acc(r.num_hash_functions, write) && acc(r.num_ngrams, write) &&
+    acc(r.seed, write) && acc(r.allocator_ref, write) &&
+    r.num_hash_functions > 0 && r.num_ngrams > 0 &&
+    |r.ngram_weights_ptr| == r.num_ngrams && r.ngram_weights_len == r.num_ngrams &&
+    |r.lsh_hash_params_ptr| == r.num_hash_functions * 2 && r.lsh_hash_params_len == r.num_hash_functions * 2
+}
+
+predicate valid_ranker_read(r: Ref) {
+    acc(r.ngram_weights_ptr, read) && acc(r.ngram_weights_len, read) &&
+    acc(r.lsh_hash_params_ptr, read) && acc(r.lsh_hash_params_len, read) &&
+    acc(r.num_hash_functions, read) && acc(r.num_ngrams, read) &&
+    acc(r.seed, read) && acc(r.allocator_ref, read) &&
+    r.num_hash_functions > 0 && r.num_ngrams > 0
+}
+
+predicate valid_ssi(s: Ref) {
+    acc(s.ssi_segments, write) && acc(s.ssi_size, write) && acc(s.ssi_capacity, write) &&
+    s.ssi_size >= 0 && s.ssi_capacity >= s.ssi_size
+}
+
+predicate valid_ssi_read(s: Ref) {
+    acc(s.ssi_segments, read) && acc(s.ssi_size, read) && acc(s.ssi_capacity, read) &&
+    s.ssi_size >= 0
+}
+
+predicate valid_tensor(t: Ref) {
+    acc(t.tensor_data_ptr, write) && acc(t.tensor_data_len, write) &&
+    acc(t.tensor_shape, write) && acc(t.tensor_rank, write) &&
+    t.tensor_data_len >= 0 && |t.tensor_data_ptr| == t.tensor_data_len
+}
+
+predicate valid_tensor_read(t: Ref) {
+    acc(t.tensor_data_ptr, read) && acc(t.tensor_data_len, read) &&
+    acc(t.tensor_shape, read) && acc(t.tensor_rank, read) &&
+    t.tensor_data_len >= 0
+}
+
+predicate valid_bitset(b: Ref) {
+    acc(b.bitset_bits_ptr, write) && acc(b.bitset_bits_len, write) && acc(b.bitset_capacity, write) &&
+    b.bitset_bits_len >= 0 && b.bitset_capacity >= 0
+}
+
+predicate valid_bitset_read(b: Ref) {
+    acc(b.bitset_bits_ptr, read) && acc(b.bitset_bits_len, read) && acc(b.bitset_capacity, read) &&
+    b.bitset_bits_len >= 0
+}
+
+predicate valid_hashmap(h: Ref) {
+    acc(h.hashmap_keys, write) && acc(h.hashmap_values, write) &&
+    acc(h.hashmap_size, write) && acc(h.hashmap_capacity, write) &&
+    h.hashmap_size >= 0 && h.hashmap_capacity >= h.hashmap_size
+}
+
+predicate valid_hashmap_read(h: Ref) {
+    acc(h.hashmap_keys, read) && acc(h.hashmap_values, read) &&
+    acc(h.hashmap_size, read) && acc(h.hashmap_capacity, read) &&
+    h.hashmap_size >= 0
+}
+
+predicate valid_ranked_segment(rs: Ref) {
+    acc(rs.tokens_ptr, write) && acc(rs.tokens_len, write) &&
+    acc(rs.score_val, write) && acc(rs.position, write) && acc(rs.anchor_flag, write) &&
+    rs.tokens_len >= 0 && |rs.tokens_ptr| == rs.tokens_len
+}
+
+predicate valid_ranked_segment_read(rs: Ref) {
+    acc(rs.tokens_ptr, read) && acc(rs.tokens_len, read) &&
+    acc(rs.score_val, read) && acc(rs.position, read) && acc(rs.anchor_flag, read) &&
+    rs.tokens_len >= 0
+}
+
+function STREAMING_BUFFER_SIZE(): Int { 1024 }
+function STREAMING_WINDOW_SIZE(): Int { 512 }
+function DEFAULT_TOP_K_RETRIEVAL(): Int { 1000 }
+function HASH_SEED_MULTIPLIER_A(): Int { 0x9e3779b97f4a7c15 }
+function HASH_SEED_MULTIPLIER_B(): Int { 0x517cc1b727220a95 }
+function LEARNING_RATE(): Real { 0.01 }
+function DIVERSITY_WEIGHT(): Real { 0.3 }
+function PROXIMITY_WEIGHT(): Real { 0.3 }
+function MAX_RAW_SCORE(): Real { 100.0 }
+function BASE_SCORE_WEIGHT(): Real { 0.4 }
+function OVERLAP_WEIGHT(): Real { 0.3 }
+function JACCARD_WEIGHT(): Real { 0.3 }
+function MAX_U64(): Int { 18446744073709551615 }
+function MAX_U32(): Int { 4294967295 }
+
+method allocate_real_array(len: Int, allocator: Ref) returns (arr: Ref)
+    requires len > 0
+    ensures acc(arr.arr_seq, write) && acc(arr.arr_len, write)
+    ensures arr.arr_len == len && |arr.arr_seq| == len
+{
+    arr := new(arr_seq, arr_len);
+    arr.arr_len := len;
+    var seq: Seq[Real] := Seq[Real](len);
+    arr.arr_seq := seq;
+}
+
+method allocate_int_array(len: Int, allocator: Ref) returns (arr: Ref)
+    requires len > 0
+    ensures acc(arr.idx_seq, write) && acc(arr.idx_len, write)
+    ensures arr.idx_len == len && |arr.idx_seq| == len
+{
+    arr := new(idx_seq, idx_len);
+    arr.idx_len := len;
+    var seq: Seq[Int] := Seq[Int](len);
+    arr.idx_seq := seq;
+}
+
+method free_real_array(arr: Ref)
+    requires acc(arr.arr_seq, write) && acc(arr.arr_len, write)
+    ensures true
+{
+    fold valid_slice_real(arr, arr.arr_len);
+}
+
+method free_int_array(arr: Ref)
+    requires acc(arr.idx_seq, write) && acc(arr.idx_len, write)
+    ensures true
+{
+    fold valid_slice_int(arr, arr.idx_len);
+}
+
+method ranker_init(allocator: Ref, num_ngrams: Int, num_hash_funcs: Int, seed: Int) returns (res: Ref)
+    requires num_ngrams > 0
+    requires num_hash_funcs > 0
+    ensures valid_ranker(res)
+    ensures res.num_ngrams == num_ngrams
+    ensures res.num_hash_functions == num_hash_funcs
+    ensures res.seed == seed
+{
+    res := new(ngram_weights_ptr, ngram_weights_len, lsh_hash_params_ptr, lsh_hash_params_len, num_hash_functions, num_ngrams, seed, allocator_ref);
+    res.num_ngrams := num_ngrams;
+    res.num_hash_functions := num_hash_funcs;
+    res.seed := seed;
+    res.allocator_ref := allocator;
+    
+    var weights: Seq[Real] := Seq[Real](num_ngrams);
+    var i: Int := 0;
+    while i < num_ngrams
+        invariant 0 <= i && i <= num_ngrams
+        invariant |weights| == num_ngrams
+        invariant forall j: Int :: 0 <= j && j < i ==> weights[j] == f32_div(1.0, f32_from_int(j + 1))
+    {
+        var decay: Real := f32_div(1.0, f32_from_int(i + 1));
+        weights := weights[i := decay];
+        i := i + 1;
+    }
+    res.ngram_weights_ptr := weights;
+    res.ngram_weights_len := num_ngrams;
+    
+    var hash_params: Seq[Int] := Seq[Int](num_hash_funcs * 2);
+    i := 0;
+    while i < num_hash_funcs
+        invariant 0 <= i && i <= num_hash_funcs
+        invariant |hash_params| == num_hash_funcs * 2
+    {
+        var idx_a: Int := i * 2;
+        var idx_b: Int := i * 2 + 1;
+        var val_a: Int := hash_add(seed, hash_mul(i, HASH_SEED_MULTIPLIER_A()));
+        var val_b: Int := hash_add(seed, hash_mul(i + 1, HASH_SEED_MULTIPLIER_B()));
+        hash_params := hash_params[idx_a := val_a];
+        hash_params := hash_params[idx_b := val_b];
+        i := i + 1;
+    }
+    res.lsh_hash_params_ptr := hash_params;
+    res.lsh_hash_params_len := num_hash_funcs * 2;
+}
+
+method ranker_deinit(self: Ref)
+    requires valid_ranker(self)
+    ensures !valid_ranker(self)
+{
+    unfold valid_ranker(self);
+}
+
+method score_sequence(self: Ref, tokens: Seq[Int], ssi: Ref) returns (result: Real)
+    requires valid_ranker_read(self)
+    requires valid_ssi_read(ssi)
+    requires |tokens| >= 0
+    ensures result >= 0.0 && result <= 1.0
+{
+    var tokens_len: Int := |tokens|;
+    if tokens_len == 0 {
+        result := 0.0;
+        return;
+    }
+    
+    var ngram_score: Real := 0.0;
+    var num_ngrams_local: Int := self.num_ngrams;
+    var ngram_weights_local: Seq[Real] := self.ngram_weights_ptr;
+    var seed_local: Int := self.seed;
+    
+    var gram: Int := 1;
+    var upper_bound: Int := min_int(num_ngrams_local, tokens_len + 1);
+    
+    while gram < upper_bound
+        invariant 1 <= gram && gram <= upper_bound
+        invariant upper_bound == min_int(num_ngrams_local, tokens_len + 1)
+        invariant ngram_score >= 0.0
+    {
+        if tokens_len >= gram {
+            var start: Int := 0;
+            var end_bound: Int := tokens_len - gram + 1;
+            while start < end_bound
+                invariant 0 <= start && start <= end_bound
+                invariant end_bound == tokens_len - gram + 1
+                invariant ngram_score >= 0.0
+            {
+                var ngram: Seq[Int] := tokens[start .. start + gram];
+                var h: Int := stableHash(ngram, seed_local);
+                var segment: Ref := ssi_get_segment(ssi, h);
+                if segment != null {
+                    var weight_idx: Int := min_int(gram - 1, num_ngrams_local - 1);
+                    var weight: Real := ngram_weights_local[weight_idx];
+                    var seg_score: Real := segment.score_val;
+                    ngram_score := f32_add(ngram_score, f32_mul(weight, seg_score));
+                }
+                start := start + 1;
+            }
+        }
+        gram := gram + 1;
+    }
+    
+    var diversity_score: Real := compute_token_diversity(self, tokens);
+    var proximity: Real := anchor_proximity(tokens, ssi);
+    
+    var raw_score: Real := f32_add(ngram_score, f32_add(f32_mul(DIVERSITY_WEIGHT(), diversity_score), f32_mul(PROXIMITY_WEIGHT(), proximity)));
+    raw_score := f32_clamp(raw_score, 0.0, MAX_RAW_SCORE());
+    result := f32_div(raw_score, MAX_RAW_SCORE());
+}
+
+method compute_token_diversity(self: Ref, tokens: Seq[Int]) returns (diversity: Real)
+    requires valid_ranker_read(self)
+    requires |tokens| >= 0
+    ensures diversity >= 0.0 && diversity <= 1.0
+{
+    var tokens_len: Int := |tokens|;
+    if tokens_len == 0 {
+        diversity := 0.0;
+        return;
+    }
+    
+    var unique_count: Int := 0;
+    var seen: Seq[Int] := Seq[Int](0);
+    
+    var i: Int := 0;
+    while i < tokens_len
+        invariant 0 <= i && i <= tokens_len
+        invariant unique_count >= 0 && unique_count <= i
+    {
+        var token: Int := tokens[i];
+        var found: Bool := false;
+        var j: Int := 0;
+        var seen_len: Int := |seen|;
+        while j < seen_len
+            invariant 0 <= j && j <= seen_len
+            invariant seen_len == |seen|
+        {
+            if seen[j] == token {
+                found := true;
+            }
+            j := j + 1;
+        }
+        if !found {
+            seen := seen ++ Seq[Int](token);
+            unique_count := unique_count + 1;
+        }
+        i := i + 1;
+    }
+    
+    diversity := f32_div(f32_from_int(unique_count), f32_from_int(tokens_len));
+}
+
+method compute_token_overlap(self: Ref, tokens: Seq[Int], query: Seq[Int]) returns (overlap_score: Real)
+    requires valid_ranker_read(self)
+    requires |tokens| >= 0
+    requires |query| >= 0
+    ensures overlap_score >= 0.0 && overlap_score <= 1.0
+{
+    var tokens_len: Int := |tokens|;
+    var query_len: Int := |query|;
+    
+    if tokens_len == 0 || query_len == 0 {
+        overlap_score := 0.0;
+        return;
+    }
+    
+    var overlap: Int := 0;
+    var i: Int := 0;
+    
+    while i < tokens_len
+        invariant 0 <= i && i <= tokens_len
+        invariant overlap >= 0 && overlap <= i
+    {
+        var token: Int := tokens[i];
+        var found: Bool := false;
+        var j: Int := 0;
+        while j < query_len && !found
+            invariant 0 <= j && j <= query_len
+        {
+            if query[j] == token {
+                found := true;
+            }
+            j := j + 1;
+        }
+        if found {
+            overlap := overlap + 1;
+        }
+        i := i + 1;
+    }
+    
+    var max_len: Int := max_int(tokens_len, query_len);
+    overlap_score := f32_div(f32_from_int(overlap), f32_from_int(max_len));
+}
+
+method compute_jaccard_similarity(self: Ref, tokens: Seq[Int], query: Seq[Int]) returns (jaccard: Real)
+    requires valid_ranker_read(self)
+    requires |tokens| >= 0
+    requires |query| >= 0
+    ensures jaccard >= 0.0 && jaccard <= 1.0
+{
+    var tokens_len: Int := |tokens|;
+    var query_len: Int := |query|;
+    
+    if tokens_len == 0 && query_len == 0 {
+        jaccard := 1.0;
+        return;
+    }
+    
+    if tokens_len == 0 || query_len == 0 {
+        jaccard := 0.0;
+        return;
+    }
+    
+    var seen_keys: Seq[Int] := Seq[Int](0);
+    var seen_vals: Seq[Int] := Seq[Int](0);
+    
+    var i: Int := 0;
+    while i < tokens_len
+        invariant 0 <= i && i <= tokens_len
+        invariant |seen_keys| == |seen_vals|
+    {
+        var token: Int := tokens[i];
+        var found_idx: Int := -1;
+        var j: Int := 0;
+        var sk_len: Int := |seen_keys|;
+        while j < sk_len
+            invariant 0 <= j && j <= sk_len
+        {
+            if seen_keys[j] == token {
+                found_idx := j;
+            }
+            j := j + 1;
+        }
+        if found_idx == -1 {
+            seen_keys := seen_keys ++ Seq[Int](token);
+            seen_vals := seen_vals ++ Seq[Int](1);
+        }
+        i := i + 1;
+    }
+    
+    i := 0;
+    while i < query_len
+        invariant 0 <= i && i <= query_len
+        invariant |seen_keys| == |seen_vals|
+    {
+        var qtoken: Int := query[i];
+        var found_idx: Int := -1;
+        var j: Int := 0;
+        var sk_len: Int := |seen_keys|;
+        while j < sk_len
+            invariant 0 <= j && j <= sk_len
+        {
+            if seen_keys[j] == qtoken {
+                found_idx := j;
+            }
+            j := j + 1;
+        }
+        if found_idx != -1 {
+            if seen_vals[found_idx] == 1 {
+                seen_vals := seen_vals[found_idx := 2];
+            }
+        } else {
+            seen_keys := seen_keys ++ Seq[Int](qtoken);
+            seen_vals := seen_vals ++ Seq[Int](1);
+        }
+        i := i + 1;
+    }
+    
+    var intersection: Int := 0;
+    var union_size: Int := |seen_keys|;
+    i := 0;
+    var sv_len: Int := |seen_vals|;
+    while i < sv_len
+        invariant 0 <= i && i <= sv_len
+        invariant intersection >= 0 && intersection <= i
+    {
+        if seen_vals[i] == 2 {
+            intersection := intersection + 1;
+        }
+        i := i + 1;
+    }
+    
+    if union_size == 0 {
+        jaccard := 0.0;
+        return;
+    }
+    
+    jaccard := f32_div(f32_from_int(intersection), f32_from_int(union_size));
+}
+
+method anchor_proximity(tokens: Seq[Int], ssi: Ref) returns (proximity: Real)
+    requires valid_ssi_read(ssi)
+    requires |tokens| >= 0
+    ensures proximity >= 0.0 && proximity <= 1.0
+{
+    var tokens_len: Int := |tokens|;
+    if tokens_len == 0 {
+        proximity := 0.0;
+        return;
+    }
+    
+    var anchors: Int := 0;
+    var total_dist: Real := 0.0;
+    var i: Int := 0;
+    
+    while i < tokens_len
+        invariant 0 <= i && i <= tokens_len
+        invariant anchors >= 0 && anchors <= i
+        invariant total_dist >= 0.0
+    {
+        var segment: Ref := ssi_get_segment(ssi, i);
+        if segment != null {
+            var anchor_hash_val: Int := segment.anchor_hash;
+            if anchor_hash_val != 0 {
+                anchors := anchors + 1;
+                var pos: Int := segment.position;
+                var raw_dist: Int := int_abs(i - pos);
+                var clamped_dist: Int := min_int(raw_dist, MAX_U32());
+                var dist: Real := f32_from_int(clamped_dist);
+                total_dist := f32_add(total_dist, dist);
+            }
+        }
+        i := i + 1;
+    }
+    
+    if anchors == 0 {
+        proximity := 0.0;
+        return;
+    }
+    
+    var denominator: Int := anchors * tokens_len;
+    var denom_clamped: Int := min_int(denominator, MAX_U32());
+    var denom_f32: Real := f32_from_int(max_int(denom_clamped, 1));
+    var ratio: Real := f32_div(total_dist, denom_f32);
+    ratio := f32_clamp(ratio, 0.0, 1.0);
+    proximity := f32_sub(1.0, ratio);
+}
+
+method ssi_get_segment(ssi: Ref, hash: Int) returns (segment: Ref)
+    requires valid_ssi_read(ssi)
+    ensures segment == null || valid_ranked_segment_read(segment)
+{
+    segment := null;
+}
+
+method score_sequence_with_query(self: Ref, tokens: Seq[Int], query: Seq[Int], ssi: Ref) returns (result: Real)
+    requires valid_ranker_read(self)
+    requires valid_ssi_read(ssi)
+    requires |tokens| >= 0
+    requires |query| >= 0
+    ensures result >= 0.0 && result <= 1.0
+{
+    var base_score: Real := score_sequence(self, tokens, ssi);
+    var token_overlap: Real := compute_token_overlap(self, tokens, query);
+    var jaccard: Real := compute_jaccard_similarity(self, tokens, query);
+    
+    var combined: Real := f32_add(f32_mul(base_score, BASE_SCORE_WEIGHT()),
+                                  f32_add(f32_mul(token_overlap, OVERLAP_WEIGHT()),
+                                         f32_mul(jaccard, JACCARD_WEIGHT())));
+    result := f32_clamp(combined, 0.0, 1.0);
+}
+
+method rank_candidates(self: Ref, candidates: Seq[Ref], ssi: Ref, allocator: Ref)
+    requires valid_ranker_read(self)
+    requires valid_ssi_read(ssi)
+    requires forall i: Int :: 0 <= i && i < |candidates| ==> valid_ranked_segment_read(candidates[i])
+{
+    var candidates_len: Int := |candidates|;
+    if candidates_len == 0 {
+        return;
+    }
+    
+    var scores: Seq[Real] := Seq[Real](candidates_len);
+    var i: Int := 0;
+    while i < candidates_len
+        invariant 0 <= i && i <= candidates_len
+        invariant |scores| == candidates_len
+    {
+        var cand: Ref := candidates[i];
+        var tokens: Seq[Int] := cand.tokens_ptr;
+        scores := scores[i := score_sequence(self, tokens, ssi)];
+        i := i + 1;
+    }
+    
+    scores := normalize_scores_static(scores);
+    
+    var indices: Seq[Int] := Seq[Int](candidates_len);
+    i := 0;
+    while i < candidates_len
+        invariant 0 <= i && i <= candidates_len
+        invariant |indices| == candidates_len
+    {
+        indices := indices[i := i];
+        i := i + 1;
+    }
+    
+    indices := sort_indices_by_scores(indices, scores);
+    
+    var sorted_tokens: Seq[Seq[Int]] := Seq[Seq[Int]](candidates_len);
+    var sorted_scores: Seq[Real] := Seq[Real](candidates_len);
+    var sorted_positions: Seq[Int] := Seq[Int](candidates_len);
+    var sorted_anchors: Seq[Bool] := Seq[Bool](candidates_len);
+    
+    i := 0;
+    while i < candidates_len
+        invariant 0 <= i && i <= candidates_len
+        invariant |sorted_tokens| == candidates_len
+        invariant |sorted_scores| == candidates_len
+        invariant |sorted_positions| == candidates_len
+        invariant |sorted_anchors| == candidates_len
+    {
+        var src_idx: Int := indices[i];
+        var cand_src: Ref := candidates[src_idx];
+        sorted_tokens := sorted_tokens[i := cand_src.tokens_ptr];
+        sorted_scores := sorted_scores[i := scores[src_idx]];
+        sorted_positions := sorted_positions[i := cand_src.position];
+        sorted_anchors := sorted_anchors[i := cand_src.anchor_flag];
+        i := i + 1;
+    }
+    
+    i := 0;
+    while i < candidates_len
+        invariant 0 <= i && i <= candidates_len
+    {
+        var cand: Ref := candidates[i];
+        cand.tokens_ptr := sorted_tokens[i];
+        cand.score_val := sorted_scores[i];
+        cand.position := sorted_positions[i];
+        cand.anchor_flag := sorted_anchors[i];
+        i := i + 1;
+    }
+}
+
+method rank_candidates_with_query(self: Ref, candidates: Seq[Ref], query: Seq[Int], ssi: Ref, allocator: Ref)
+    requires valid_ranker_read(self)
+    requires valid_ssi_read(ssi)
+    requires forall i: Int :: 0 <= i && i < |candidates| ==> valid_ranked_segment_read(candidates[i])
+    requires |query| >= 0
+{
+    var candidates_len: Int := |candidates|;
+    if candidates_len == 0 {
+        return;
+    }
+    
+    var scores: Seq[Real] := Seq[Real](candidates_len);
+    var i: Int := 0;
+    while i < candidates_len
+        invariant 0 <= i && i <= candidates_len
+        invariant |scores| == candidates_len
+    {
+        var cand: Ref := candidates[i];
+        var tokens: Seq[Int] := cand.tokens_ptr;
+        scores := scores[i := score_sequence_with_query(self, tokens, query, ssi)];
+        i := i + 1;
+    }
+    
+    scores := normalize_scores_static(scores);
+    
+    var indices: Seq[Int] := Seq[Int](candidates_len);
+    i := 0;
+    while i < candidates_len
+        invariant 0 <= i && i <= candidates_len
+        invariant |indices| == candidates_len
+    {
+        indices := indices[i := i];
+        i := i + 1;
+    }
+    
+    indices := sort_indices_by_scores(indices, scores);
+    
+    var sorted_tokens: Seq[Seq[Int]] := Seq[Seq[Int]](candidates_len);
+    var sorted_scores: Seq[Real] := Seq[Real](candidates_len);
+    var sorted_positions: Seq[Int] := Seq[Int](candidates_len);
+    var sorted_anchors: Seq[Bool] := Seq[Bool](candidates_len);
+    
+    i := 0;
+    while i < candidates_len
+        invariant 0 <= i && i <= candidates_len
+        invariant |sorted_tokens| == candidates_len
+        invariant |sorted_scores| == candidates_len
+        invariant |sorted_positions| == candidates_len
+        invariant |sorted_anchors| == candidates_len
+    {
+        var src_idx: Int := indices[i];
+        var cand_src: Ref := candidates[src_idx];
+        sorted_tokens := sorted_tokens[i := cand_src.tokens_ptr];
+        sorted_scores := sorted_scores[i := scores[src_idx]];
+        sorted_positions := sorted_positions[i := cand_src.position];
+        sorted_anchors := sorted_anchors[i := cand_src.anchor_flag];
+        i := i + 1;
+    }
+    
+    i := 0;
+    while i < candidates_len
+        invariant 0 <= i && i <= candidates_len
+    {
+        var cand: Ref := candidates[i];
+        cand.tokens_ptr := sorted_tokens[i];
+        cand.score_val := sorted_scores[i];
+        cand.position := sorted_positions[i];
+        cand.anchor_flag := sorted_anchors[i];
+        i := i + 1;
+    }
+}
+
+method sort_indices_by_scores(indices: Seq[Int], scores: Seq[Real]) returns (sorted: Seq[Int])
+    requires |indices| == |scores|
+    ensures |sorted| == |indices|
+{
+    var n: Int := |indices|;
+    sorted := indices;
+    var i: Int := 0;
+    while i < n - 1
+        invariant 0 <= i && i < n
+        invariant |sorted| == n
+    {
+        var j: Int := 0;
+        while j < n - i - 1
+            invariant 0 <= j && j <= n - i
+            invariant |sorted| == n
+        {
+            var a: Int := sorted[j];
+            var b: Int := sorted[j + 1];
+            if scores[a] < scores[b] {
+                sorted := sorted[j := b];
+                sorted := sorted[j + 1 := a];
+            }
+            j := j + 1;
+        }
+        i := i + 1;
+    }
+}
+
+method normalize_scores_static(scores: Seq[Real]) returns (result: Seq[Real])
+    ensures |result| == |scores|
+{
+    var n: Int := |scores|;
+    if n == 0 {
+        result := scores;
+        return;
+    }
+    
+    var min_score: Real := scores[0];
+    var max_score: Real := scores[0];
+    var valid_count: Int := 0;
+    
+    var i: Int := 0;
+    while i < n
+        invariant 0 <= i && i <= n
+        invariant valid_count >= 0 && valid_count <= i
+    {
+        var s: Real := scores[i];
+        if !f32_is_nan(s) && !f32_is_inf(s) {
+            valid_count := valid_count + 1;
+            if s < min_score {
+                min_score := s;
+            }
+            if s > max_score {
+                max_score := s;
+            }
+        }
+        i := i + 1;
+    }
+    
+    if valid_count == 0 {
+        result := scores;
+        return;
+    }
+    
+    if max_score == min_score {
+        result := scores;
+        i := 0;
+        while i < n
+            invariant 0 <= i && i <= n
+            invariant |result| == n
+        {
+            var s: Real := scores[i];
+            if !f32_is_nan(s) && !f32_is_inf(s) {
+                result := result[i := 0.5];
+            }
+            i := i + 1;
+        }
+        return;
+    }
+    
+    var range: Real := f32_sub(max_score, min_score);
+    result := scores;
+    i := 0;
+    while i < n
+        invariant 0 <= i && i <= n
+        invariant |result| == n
+    {
+        var s: Real := scores[i];
+        if !f32_is_nan(s) && !f32_is_inf(s) {
+            var normalized: Real := f32_div(f32_sub(s, min_score), range);
+            result := result[i := normalized];
+        }
+        i := i + 1;
+    }
+}
+
+method batch_score(self: Ref, sequences: Seq[Seq[Int]], ssi: Ref, allocator: Ref) returns (scores: Seq[Real])
+    requires valid_ranker_read(self)
+    requires valid_ssi_read(ssi)
+    ensures |scores| == |sequences|
+{
+    var batch_size: Int := |sequences|;
+    if batch_size == 0 {
+        scores := Seq[Real](0);
+        return;
+    }
+    
+    scores := Seq[Real](batch_size);
+    var b: Int := 0;
+    while b < batch_size
+        invariant 0 <= b && b <= batch_size
+        invariant |scores| == batch_size
+    {
+        scores := scores[b := score_sequence(self, sequences[b], ssi)];
+        b := b + 1;
+    }
+}
+
+method top_k_heap(self: Ref, ssi: Ref, query: Seq[Int], k: Int, allocator: Ref) returns (result: Seq[Ref])
+    requires valid_ranker_read(self)
+    requires valid_ssi_read(ssi)
+    requires |query| >= 0
+    requires k >= 0
+    ensures |result| <= k
+    ensures forall i: Int :: 0 <= i && i < |result| ==> valid_ranked_segment_read(result[i])
+{
+    if k == 0 {
+        result := Seq[Ref](0);
+        return;
+    }
+    
+    var candidates: Seq[Ref] := ssi_retrieve_top_k(ssi, query, DEFAULT_TOP_K_RETRIEVAL());
+    var candidates_len: Int := |candidates|;
+    
+    var heap_items: Seq[Ref] := Seq[Ref](0);
+    var heap_size: Int := 0;
+    
+    var i: Int := 0;
+    while i < candidates_len
+        invariant 0 <= i && i <= candidates_len
+        invariant heap_size >= 0 && heap_size <= k
+        invariant |heap_items| == heap_size
+    {
+        var cand: Ref := candidates[i];
+        var tokens: Seq[Int] := cand.tokens_ptr;
+        var score: Real := score_sequence_with_query(self, tokens, query, ssi);
+        
+        if !f32_is_nan(score) && !f32_is_inf(score) {
+            if heap_size < k {
+                var ranked: Ref := new(tokens_ptr, tokens_len, score_val, position, anchor_flag);
+                ranked.tokens_ptr := tokens;
+                ranked.tokens_len := |tokens|;
+                ranked.score_val := score;
+                ranked.position := cand.position;
+                ranked.anchor_flag := cand.anchor_flag;
+                heap_items := heap_items ++ Seq[Ref](ranked);
+                heap_size := heap_size + 1;
+            } else {
+                var min_idx: Int := 0;
+                var min_score: Real := heap_items[0].score_val;
+                var j: Int := 1;
+                while j < heap_size
+                    invariant 0 <= j && j <= heap_size
+                    invariant min_idx >= 0 && min_idx < heap_size
+                {
+                    if heap_items[j].score_val < min_score {
+                        min_idx := j;
+                        min_score := heap_items[j].score_val;
+                    }
+                    j := j + 1;
+                }
+                
+                if score > min_score {
+                    heap_items := heap_items[min_idx := heap_items[heap_size - 1]];
+                    heap_size := heap_size - 1;
+                    heap_items := heap_items[0 .. heap_size];
+                    
+                    var ranked: Ref := new(tokens_ptr, tokens_len, score_val, position, anchor_flag);
+                    ranked.tokens_ptr := tokens;
+                    ranked.tokens_len := |tokens|;
+                    ranked.score_val := score;
+                    ranked.position := cand.position;
+                    ranked.anchor_flag := cand.anchor_flag;
+                    heap_items := heap_items ++ Seq[Ref](ranked);
+                    heap_size := heap_size + 1;
+                }
+            }
+        }
+        i := i + 1;
+    }
+    
+    result := Seq[Ref](heap_size);
+    var idx: Int := heap_size - 1;
+    while idx >= 0
+        invariant -1 <= idx && idx < heap_size
+        invariant |result| == heap_size
+    {
+        result := result[idx := heap_items[idx]];
+        idx := idx - 1;
+    }
+}
+
+method ssi_retrieve_top_k(ssi: Ref, query: Seq[Int], k: Int) returns (result: Seq[Ref])
+    requires valid_ssi_read(ssi)
+    requires k >= 0
+    ensures |result| <= k
+    ensures forall i: Int :: 0 <= i && i < |result| ==> valid_ranked_segment_read(result[i])
+{
+    result := Seq[Ref](0);
+}
+
+method update_weights(self: Ref, gradients: Seq[Real])
+    requires valid_ranker(self)
+    requires |gradients| >= 0
+{
+    var ngram_weights_local: Seq[Real] := self.ngram_weights_ptr;
+    var ngram_len: Int := self.ngram_weights_len;
+    var grad_len: Int := |gradients|;
+    var bound: Int := min_int(ngram_len, grad_len);
+    
+    var i: Int := 0;
+    while i < bound
+        invariant 0 <= i && i <= bound
+        invariant bound == min_int(ngram_len, grad_len)
+    {
+        var grad: Real := gradients[i];
+        if !f32_is_nan(grad) && !f32_is_inf(grad) {
+            var current: Real := ngram_weights_local[i];
+            var updated: Real := f32_add(current, f32_mul(grad, LEARNING_RATE()));
+            updated := f32_clamp(updated, 0.0, 1.0);
+            ngram_weights_local := ngram_weights_local[i := updated];
+        }
+        i := i + 1;
+    }
+    self.ngram_weights_ptr := ngram_weights_local;
+}
+
+method min_hash_signature(self: Ref, tokens: Seq[Int]) returns (sig: Seq[Int])
+    requires valid_ranker_read(self)
+    ensures |sig| == self.num_hash_functions
+{
+    var tokens_len: Int := |tokens|;
+    var num_hash_funcs: Int := self.num_hash_functions;
+    var hash_params: Seq[Int] := self.lsh_hash_params_ptr;
+    
+    if tokens_len == 0 {
+        sig := Seq[Int](num_hash_funcs);
+        var i: Int := 0;
+        while i < num_hash_funcs
+            invariant 0 <= i && i <= num_hash_funcs
+            invariant |sig| == num_hash_funcs
+        {
+            sig := sig[i := MAX_U64()];
+            i := i + 1;
+        }
+        return;
+    }
+    
+    sig := Seq[Int](num_hash_funcs);
+    var h: Int := 0;
+    while h < num_hash_funcs
+        invariant 0 <= h && h <= num_hash_funcs
+        invariant |sig| == num_hash_funcs
+    {
+        var min_hash: Int := MAX_U64();
+        var seed_a: Int := hash_params[h * 2];
+        var seed_b: Int := hash_params[h * 2 + 1];
+        
+        var t: Int := 0;
+        while t < tokens_len
+            invariant 0 <= t && t <= tokens_len
+        {
+            var token: Int := tokens[t];
+            var hash_val: Int := hash_xor(stableHash(Seq[Int](token), seed_a), seed_b);
+            if hash_val < min_hash {
+                min_hash := hash_val;
+            }
+            t := t + 1;
+        }
+        sig := sig[h := min_hash];
+        h := h + 1;
+    }
+}
+
+method jaccard_similarity_from_signatures(sig1: Seq[Int], sig2: Seq[Int]) returns (sim: Real)
+    ensures sim >= 0.0 && sim <= 1.0
+{
+    var len1: Int := |sig1|;
+    var len2: Int := |sig2|;
+    
+    if len1 != len2 {
+        sim := 0.0;
+        return;
+    }
+    
+    if len1 == 0 {
+        sim := 0.0;
+        return;
+    }
+    
+    var matches: Int := 0;
+    var i: Int := 0;
+    while i < len1
+        invariant 0 <= i && i <= len1
+        invariant matches >= 0 && matches <= i
+    {
+        if sig1[i] == sig2[i] {
+            matches := matches + 1;
+        }
+        i := i + 1;
+    }
+    
+    sim := f32_div(f32_from_int(matches), f32_from_int(len1));
+}
+
+method estimate_jaccard(set1: Ref, set2: Ref) returns (est: Real)
+    requires valid_bitset_read(set1)
+    requires valid_bitset_read(set2)
+    ensures est >= 0.0 && est <= 1.0
+{
+    var intersect: Int := 0;
+    var union_count: Int := 0;
+    var words1: Int := set1.bitset_bits_len;
+    var words2: Int := set2.bitset_bits_len;
+    var words: Int := min_int(words1, words2);
+    
+    var bits1: Seq[Int] := set1.bitset_bits_ptr;
+    var bits2: Seq[Int] := set2.bitset_bits_ptr;
+    
+    var i: Int := 0;
+    while i < words
+        invariant 0 <= i && i <= words
+        invariant intersect >= 0
+        invariant union_count >= 0
+    {
+        var and_val: Int := bitwise_and(bits1[i], bits2[i]);
+        var or_val: Int := bitwise_or(bits1[i], bits2[i]);
+        intersect := intersect + popcount(and_val);
+        union_count := union_count + popcount(or_val);
+        i := i + 1;
+    }
+    
+    if union_count == 0 {
+        est := 0.0;
+        return;
+    }
+    
+    est := f32_div(f32_from_int(intersect), f32_from_int(union_count));
+}
+
+method vector_score(embedding: Ref, query_emb: Ref) returns (result: Real)
+    requires valid_tensor_read(embedding)
+    requires valid_tensor_read(query_emb)
+    requires embedding.tensor_rank == query_emb.tensor_rank
+    ensures result >= -1.0 && result <= 1.0
+{
+    var emb_data: Seq[Real] := embedding.tensor_data_ptr;
+    var query_data: Seq[Real] := query_emb.tensor_data_ptr;
+    var emb_len: Int := embedding.tensor_data_len;
+    var query_len: Int := query_emb.tensor_data_len;
+    
+    if emb_len != query_len {
+        result := 0.0;
+        return;
+    }
+    
+    if emb_len == 0 {
+        result := 0.0;
+        return;
+    }
+    
+    var dot_prod: Real := 0.0;
+    var norm_emb: Real := 0.0;
+    var norm_query: Real := 0.0;
+    
+    var i: Int := 0;
+    while i < emb_len
+        invariant 0 <= i && i <= emb_len
+        invariant dot_prod >= -1000000.0 && dot_prod <= 1000000.0
+        invariant norm_emb >= 0.0
+        invariant norm_query >= 0.0
+    {
+        var e: Real := emb_data[i];
+        var q: Real := query_data[i];
+        
+        if !f32_is_nan(e) && !f32_is_nan(q) && !f32_is_inf(e) && !f32_is_inf(q) {
+            dot_prod := f32_add(dot_prod, f32_mul(e, q));
+            norm_emb := f32_add(norm_emb, f32_mul(e, e));
+            norm_query := f32_add(norm_query, f32_mul(q, q));
+        }
+        i := i + 1;
+    }
+    
+    if norm_emb <= 0.0 || norm_query <= 0.0 {
+        result := 0.0;
+        return;
+    }
+    
+    norm_emb := f32_sqrt(norm_emb);
+    norm_query := f32_sqrt(norm_query);
+    
+    if norm_emb == 0.0 || norm_query == 0.0 {
+        result := 0.0;
+        return;
+    }
+    
+    var denom: Real := f32_mul(norm_emb, norm_query);
+    result := f32_div(dot_prod, denom);
+    result := f32_clamp(result, -1.0, 1.0);
+}
+
+method dot_product_score(embedding: Ref, query_emb: Ref) returns (result: Real)
+    requires valid_tensor_read(embedding)
+    requires valid_tensor_read(query_emb)
+    requires embedding.tensor_rank == query_emb.tensor_rank
+{
+    var emb_data: Seq[Real] := embedding.tensor_data_ptr;
+    var query_data: Seq[Real] := query_emb.tensor_data_ptr;
+    var emb_len: Int := embedding.tensor_data_len;
+    var query_len: Int := query_emb.tensor_data_len;
+    
+    if emb_len != query_len {
+        result := 0.0;
+        return;
+    }
+    
+    if emb_len == 0 {
+        result := 0.0;
+        return;
+    }
+    
+    var dot_prod: Real := 0.0;
+    var i: Int := 0;
+    while i < emb_len
+        invariant 0 <= i && i <= emb_len
+    {
+        var e: Real := emb_data[i];
+        var q: Real := query_data[i];
+        
+        if !f32_is_nan(e) && !f32_is_nan(q) && !f32_is_inf(e) && !f32_is_inf(q) {
+            dot_prod := f32_add(dot_prod, f32_mul(e, q));
+        }
+        i := i + 1;
+    }
+    
+    result := dot_prod;
+}
+
+method weighted_average(scores: Seq[Real], weights: Seq[Real]) returns (result: Real)
+    requires |scores| == |weights|
+    ensures result >= 0.0 || result == 0.0
+{
+    var n: Int := |scores|;
+    if n == 0 {
+        result := 0.0;
+        return;
+    }
+    
+    var num: Real := 0.0;
+    var den: Real := 0.0;
+    var i: Int := 0;
+    
+    while i < n
+        invariant 0 <= i && i <= n
+        invariant num >= 0.0 || num == 0.0
+        invariant den >= 0.0 || den == 0.0
+    {
+        var s: Real := scores[i];
+        var w: Real := weights[i];
+        
+        if !f32_is_nan(s) && !f32_is_nan(w) && !f32_is_inf(s) && !f32_is_inf(w) {
+            num := f32_add(num, f32_mul(s, w));
+            den := f32_add(den, w);
+        }
+        i := i + 1;
+    }
+    
+    if den == 0.0 {
+        result := 0.0;
+        return;
+    }
+    
+    result := f32_div(num, den);
+}
+
+method exponential_decay(scores: Seq[Real], decay_factor: Real) returns (result: Seq[Real])
+    requires decay_factor > 0.0 && decay_factor < 1.0
+    ensures |result| == |scores|
+{
+    var n: Int := |scores|;
+    if n == 0 {
+        result := scores;
+        return;
+    }
+    
+    if decay_factor <= 0.0 || decay_factor >= 1.0 {
+        result := scores;
+        return;
+    }
+    
+    result := scores;
+    var current_decay: Real := 1.0;
+    var i: Int := 0;
+    
+    while i < n
+        invariant 0 <= i && i <= n
+        invariant |result| == n
+        invariant current_decay >= 0.0 && current_decay <= 1.0
+    {
+        var s: Real := scores[i];
+        if !f32_is_nan(s) && !f32_is_inf(s) {
+            result := result[i := f32_mul(s, current_decay)];
+        }
+        current_decay := f32_mul(current_decay, decay_factor);
+        i := i + 1;
+    }
+}
+
+method normalize_scores(self: Ref, scores: Seq[Real]) returns (result: Seq[Real])
+    requires valid_ranker_read(self)
+    ensures |result| == |scores|
+{
+    result := normalize_scores_static(scores);
+}
+
+method rank_by_multiple_criteria(self: Ref, candidates: Seq[Ref], criteria: Seq[Seq[Real]], weights: Seq[Real], allocator: Ref)
+    requires valid_ranker_read(self)
+    requires forall i: Int :: 0 <= i && i < |candidates| ==> valid_ranked_segment_read(candidates[i])
+    requires |criteria| >= 0
+    requires |weights| >= 0
+{
+    var num_cand: Int := |candidates|;
+    if num_cand == 0 {
+        return;
+    }
+    
+    var num_crit_total: Int := |criteria|;
+    if num_crit_total == 0 {
+        return;
+    }
+    
+    var weights_len: Int := |weights|;
+    if weights_len == 0 {
+        return;
+    }
+    
+    var num_crit: Int := min_int(num_crit_total, weights_len);
+    
+    var combined: Seq[Real] := Seq[Real](num_cand);
+    var c: Int := 0;
+    while c < num_cand
+        invariant 0 <= c && c <= num_cand
+        invariant |combined| == num_cand
+    {
+        var crit_score: Real := 0.0;
+        var cr: Int := 0;
+        while cr < num_crit
+            invariant 0 <= cr && cr <= num_crit
+        {
+            if c < |criteria[cr]| {
+                var score_val: Real := criteria[cr][c];
+                var weight_val: Real := weights[cr];
+                if !f32_is_nan(score_val) && !f32_is_nan(weight_val) && !f32_is_inf(score_val) && !f32_is_inf(weight_val) {
+                    crit_score := f32_add(crit_score, f32_mul(score_val, weight_val));
+                }
+            }
+            cr := cr + 1;
+        }
+        combined := combined[c := crit_score];
+        c := c + 1;
+    }
+    
+    var indices: Seq[Int] := Seq[Int](num_cand);
+    var i: Int := 0;
+    while i < num_cand
+        invariant 0 <= i && i <= num_cand
+        invariant |indices| == num_cand
+    {
+        indices := indices[i := i];
+        i := i + 1;
+    }
+    
+    indices := sort_indices_by_scores(indices, combined);
+    
+    var sorted_tokens: Seq[Seq[Int]] := Seq[Seq[Int]](num_cand);
+    var sorted_scores: Seq[Real] := Seq[Real](num_cand);
+    var sorted_positions: Seq[Int] := Seq[Int](num_cand);
+    var sorted_anchors: Seq[Bool] := Seq[Bool](num_cand);
+    
+    i := 0;
+    while i < num_cand
+        invariant 0 <= i && i <= num_cand
+        invariant |sorted_tokens| == num_cand
+        invariant |sorted_scores| == num_cand
+        invariant |sorted_positions| == num_cand
+        invariant |sorted_anchors| == num_cand
+    {
+        var src_idx: Int := indices[i];
+        var cand_src: Ref := candidates[src_idx];
+        sorted_tokens := sorted_tokens[i := cand_src.tokens_ptr];
+        sorted_scores := sorted_scores[i := combined[src_idx]];
+        sorted_positions := sorted_positions[i := cand_src.position];
+        sorted_anchors := sorted_anchors[i := cand_src.anchor_flag];
+        i := i + 1;
+    }
+    
+    i := 0;
+    while i < num_cand
+        invariant 0 <= i && i <= num_cand
+    {
+        var cand: Ref := candidates[i];
+        cand.tokens_ptr := sorted_tokens[i];
+        cand.score_val := sorted_scores[i];
+        cand.position := sorted_positions[i];
+        cand.anchor_flag := sorted_anchors[i];
+        i := i + 1;
+    }
+}
+
+method streaming_rank(self: Ref, ssi: Ref, k: Int, allocator: Ref) returns (result: Seq[Ref])
+    requires valid_ranker_read(self)
+    requires valid_ssi_read(ssi)
+    requires k >= 0
+    ensures |result| <= k
+    ensures forall i: Int :: 0 <= i && i < |result| ==> valid_ranked_segment_read(result[i])
+{
+    if k == 0 {
+        result := Seq[Ref](0);
+        return;
+    }
+    
+    var rolling_buffer: Seq[Int] := Seq[Int](0);
+    var top_k_items: Seq[Ref] := Seq[Ref](0);
+    var top_k_size: Int := 0;
+    var position: Int := 0;
+    
+    var has_more: Bool := true;
+    while has_more && |rolling_buffer| < STREAMING_WINDOW_SIZE() * 2
+        invariant top_k_size >= 0 && top_k_size <= k
+        invariant |top_k_items| == top_k_size
+        invariant position >= 0
+    {
+        has_more := false;
+    }
+    
+    while |rolling_buffer| >= STREAMING_WINDOW_SIZE()
+        invariant top_k_size >= 0 && top_k_size <= k
+        invariant |top_k_items| == top_k_size
+    {
+        var window: Seq[Int] := rolling_buffer[0 .. STREAMING_WINDOW_SIZE()];
+        var score: Real := score_sequence(self, window, ssi);
+        
+        if !f32_is_nan(score) && !f32_is_inf(score) {
+            if top_k_size < k {
+                var seg: Ref := new(tokens_ptr, tokens_len, score_val, position, anchor_flag);
+                seg.tokens_ptr := window;
+                seg.tokens_len := STREAMING_WINDOW_SIZE();
+                seg.score_val := score;
+                seg.position := position;
+                seg.anchor_flag := false;
+                top_k_items := top_k_items ++ Seq[Ref](seg);
+                top_k_size := top_k_size + 1;
+            } else {
+                var min_idx: Int := 0;
+                var min_score: Real := top_k_items[0].score_val;
+                var j: Int := 1;
+                while j < top_k_size
+                    invariant 0 <= j && j <= top_k_size
+                    invariant min_idx >= 0 && min_idx < top_k_size
+                {
+                    if top_k_items[j].score_val < min_score {
+                        min_idx := j;
+                        min_score := top_k_items[j].score_val;
+                    }
+                    j := j + 1;
+                }
+                
+                if score > min_score {
+                    top_k_items := top_k_items[min_idx := top_k_items[top_k_size - 1]];
+                    top_k_size := top_k_size - 1;
+                    top_k_items := top_k_items[0 .. top_k_size];
+                    
+                    var seg: Ref := new(tokens_ptr, tokens_len, score_val, position, anchor_flag);
+                    seg.tokens_ptr := window;
+                    seg.tokens_len := STREAMING_WINDOW_SIZE();
+                    seg.score_val := score;
+                    seg.position := position;
+                    seg.anchor_flag := false;
+                    top_k_items := top_k_items ++ Seq[Ref](seg);
+                    top_k_size := top_k_size + 1;
+                }
+            }
+        }
+        
+        rolling_buffer := rolling_buffer[1 .. |rolling_buffer|];
+        position := position + 1;
+    }
+    
+    top_k_items := sort_segments_by_score(top_k_items);
+    
+    result := top_k_items;
+}
+
+method sort_segments_by_score(segments: Seq[Ref]) returns (sorted: Seq[Ref])
+    ensures |sorted| == |segments|
+{
+    var n: Int := |segments|;
+    sorted := segments;
+    
+    var i: Int := 0;
+    while i < n - 1
+        invariant 0 <= i && i < n
+        invariant |sorted| == n
+    {
+        var j: Int := 0;
+        while j < n - i - 1
+            invariant 0 <= j && j <= n - i
+            invariant |sorted| == n
+        {
+            var a: Ref := sorted[j];
+            var b: Ref := sorted[j + 1];
+            var score_a: Real := a.score_val;
+            var score_b: Real := b.score_val;
+            if !f32_is_nan(score_a) && !f32_is_nan(score_b) && score_a < score_b {
+                sorted := sorted[j := b];
+                sorted := sorted[j + 1 := a];
+            }
+            j := j + 1;
+        }
+        i := i + 1;
+    }
+}
+
+method parallel_score(self: Ref, sequences: Seq[Seq[Int]], ssi: Ref, num_threads: Int) returns (scores: Seq[Real])
+    requires valid_ranker_read(self)
+    requires valid_ssi_read(ssi)
+    requires num_threads >= 0
+    ensures |scores| == |sequences|
+{
+    var seq_len: Int := |sequences|;
+    if seq_len == 0 {
+        scores := Seq[Real](0);
+        return;
+    }
+    
+    scores := Seq[Real](seq_len);
+    var i: Int := 0;
+    while i < seq_len
+        invariant 0 <= i && i <= seq_len
+        invariant |scores| == seq_len
+    {
+        scores := scores[i := score_sequence(self, sequences[i], ssi)];
+        i := i + 1;
+    }
+}
+
+method calibrate_weights(self: Ref, training_data: Seq[Seq[Int]], labels: Seq[Real], ssi: Ref, epochs: Int)
+    requires valid_ranker(self)
+    requires |training_data| == |labels|
+    requires epochs >= 0
+{
+    var data_len: Int := |training_data|;
+    if data_len == 0 {
+        return;
+    }
+    
+    var ngram_len: Int := self.ngram_weights_len;
+    var gradients: Seq[Real] := Seq[Real](ngram_len);
+    
+    var epoch: Int := 0;
+    while epoch < epochs
+        invariant 0 <= epoch && epoch <= epochs
+        invariant |gradients| == ngram_len
+    {
+        var g: Int := 0;
+        while g < ngram_len
+            invariant 0 <= g && g <= ngram_len
+            invariant |gradients| == ngram_len
+        {
+            gradients := gradients[g := 0.0];
+            g := g + 1;
+        }
+        
+        var i: Int := 0;
+        while i < data_len
+            invariant 0 <= i && i <= data_len
+            invariant |gradients| == ngram_len
+        {
+            var pred: Real := score_sequence(self, training_data[i], ssi);
+            var label: Real := labels[i];
+            
+            if !f32_is_nan(pred) && !f32_is_nan(label) && !f32_is_inf(pred) && !f32_is_inf(label) {
+                var err: Real := f32_sub(pred, label);
+                g := 0;
+                while g < ngram_len
+                    invariant 0 <= g && g <= ngram_len
+                    invariant |gradients| == ngram_len
+                {
+                    var grad_update: Real := f32_mul(err, LEARNING_RATE());
+                    gradients := gradients[g := f32_add(gradients[g], grad_update)];
+                    g := g + 1;
+                }
+            }
+            i := i + 1;
+        }
+        
+        update_weights(self, gradients);
+        epoch := epoch + 1;
+    }
+}
+
+method export_model(self: Ref, path: Seq[Int]) returns (success: Bool)
+    requires valid_ranker_read(self)
+    ensures success == true || success == false
+{
+    success := true;
+}
+
+method import_model(self: Ref, path: Seq[Int]) returns (success: Bool)
+    requires valid_ranker(self)
+    ensures success == true || success == false
+{
+    success := true;
+}
+
+method bitset_init(allocator: Ref, capacity: Int) returns (bitset: Ref)
+    requires capacity > 0
+    ensures valid_bitset(bitset)
+    ensures bitset.bitset_capacity == capacity
+{
+    bitset := new(bitset_bits_ptr, bitset_bits_len, bitset_capacity);
+    bitset.bitset_capacity := capacity;
+    var words_needed: Int := (capacity + 63) / 64;
+    bitset.bitset_bits_len := words_needed;
+    bitset.bitset_bits_ptr := Seq[Int](words_needed);
+}
+
+method bitset_set(bitset: Ref, index: Int)
+    requires valid_bitset(bitset)
+    requires index >= 0 && index < bitset.bitset_capacity
+    ensures valid_bitset(bitset)
+{
+    var word_idx: Int := index / 64;
+    var bit_idx: Int := index % 64;
+    var bits: Seq[Int] := bitset.bitset_bits_ptr;
+    var mask: Int := left_shift(1, bit_idx);
+    bits := bits[word_idx := bitwise_or(bits[word_idx], mask)];
+    bitset.bitset_bits_ptr := bits;
+}
+
+method bitset_get(bitset: Ref, index: Int) returns (set: Bool)
+    requires valid_bitset_read(bitset)
+    requires index >= 0 && index < bitset.bitset_capacity
+{
+    var word_idx: Int := index / 64;
+    var bit_idx: Int := index % 64;
+    var bits: Seq[Int] := bitset.bitset_bits_ptr;
+    var mask: Int := left_shift(1, bit_idx);
+    var word: Int := bits[word_idx];
+    set := bitwise_and(word, mask) != 0;
+}
+
+method bitset_deinit(bitset: Ref)
+    requires valid_bitset(bitset)
+    ensures !valid_bitset(bitset)
+{
+    unfold valid_bitset(bitset);
+}
+
+method tensor_init(allocator: Ref, shape: Seq[Int]) returns (tensor: Ref)
+    requires |shape| > 0
+    ensures valid_tensor(tensor)
+{
+    tensor := new(tensor_data_ptr, tensor_data_len, tensor_shape, tensor_rank);
+    tensor.tensor_rank := |shape|;
+    tensor.tensor_shape := shape;
+    
+    var total_size: Int := 1;
+    var i: Int := 0;
+    var shape_len: Int := |shape|;
+    while i < shape_len
+        invariant 0 <= i && i <= shape_len
+        invariant total_size >= 1
+    {
+        total_size := total_size * shape[i];
+        i := i + 1;
+    }
+    
+    tensor.tensor_data_len := total_size;
+    tensor.tensor_data_ptr := Seq[Real](total_size);
+}
+
+method tensor_deinit(tensor: Ref)
+    requires valid_tensor(tensor)
+    ensures !valid_tensor(tensor)
+{
+    unfold valid_tensor(tensor);
+}
+
+method ranked_segment_init(allocator: Ref, tokens: Seq[Int], score: Real, position: Int, anchor: Bool) returns (seg: Ref)
+    requires |tokens| >= 0
+    ensures valid_ranked_segment(seg)
+    ensures seg.tokens_len == |tokens|
+    ensures seg.score_val == score
+    ensures seg.position == position
+    ensures seg.anchor_flag == anchor
+{
+    seg := new(tokens_ptr, tokens_len, score_val, position, anchor_flag);
+    seg.tokens_ptr := tokens;
+    seg.tokens_len := |tokens|;
+    seg.score_val := score;
+    seg.position := position;
+    seg.anchor_flag := anchor;
+}
+
+method ranked_segment_deinit(seg: Ref)
+    requires valid_ranked_segment(seg)
+    ensures !valid_ranked_segment(seg)
+{
+    unfold valid_ranked_segment(seg);
+}
+
+method ssi_init(allocator: Ref) returns (ssi: Ref)
+    ensures valid_ssi(ssi)
+    ensures ssi.ssi_size == 0
+{
+    ssi := new(ssi_segments, ssi_size, ssi_capacity);
+    ssi.ssi_size := 0;
+    ssi.ssi_capacity := 16;
+    ssi.ssi_segments := Seq[Ref](16);
+}
+
+method ssi_deinit(ssi: Ref)
+    requires valid_ssi(ssi)
+    ensures !valid_ssi(ssi)
+{
+    unfold valid_ssi(ssi);
+}
+
+method ssi_add_sequence(ssi: Ref, tokens: Seq[Int], position: Int, anchor: Bool) returns (success: Bool)
+    requires valid_ssi(ssi)
+    requires |tokens| >= 0
+    ensures valid_ssi(ssi)
+    ensures success == true || success == false
+{
+    success := true;
+}
+
+method hashmap_init(allocator: Ref, capacity: Int) returns (hm: Ref)
+    requires capacity > 0
+    ensures valid_hashmap(hm)
+    ensures hm.hashmap_capacity == capacity
+    ensures hm.hashmap_size == 0
+{
+    hm := new(hashmap_keys, hashmap_values, hashmap_size, hashmap_capacity);
+    hm.hashmap_capacity := capacity;
+    hm.hashmap_size := 0;
+    hm.hashmap_keys := Seq[Int](capacity);
+    hm.hashmap_values := Seq[Int](capacity);
+}
+
+method hashmap_put(hm: Ref, key: Int, value: Int) returns (success: Bool)
+    requires valid_hashmap(hm)
+    ensures valid_hashmap(hm)
+    ensures success == true || success == false
+{
+    var size: Int := hm.hashmap_size;
+    var cap: Int := hm.hashmap_capacity;
+    
+    if size >= cap {
+        success := false;
+        return;
+    }
+    
+    var keys: Seq[Int] := hm.hashmap_keys;
+    var vals: Seq[Int] := hm.hashmap_values;
+    
+    keys := keys[size := key];
+    vals := vals[size := value];
+    
+    hm.hashmap_keys := keys;
+    hm.hashmap_values := vals;
+    hm.hashmap_size := size + 1;
+    success := true;
+}
+
+method hashmap_get(hm: Ref, key: Int) returns (value: Int, found: Bool)
+    requires valid_hashmap_read(hm)
+{
+    var keys: Seq[Int] := hm.hashmap_keys;
+    var vals: Seq[Int] := hm.hashmap_values;
+    var size: Int := hm.hashmap_size;
+    
+    var i: Int := 0;
+    while i < size
+        invariant 0 <= i && i <= size
+    {
+        if keys[i] == key {
+            value := vals[i];
+            found := true;
+            return;
+        }
+        i := i + 1;
+    }
+    
+    value := 0;
+    found := false;
+}
+
+method hashmap_deinit(hm: Ref)
+    requires valid_hashmap(hm)
+    ensures !valid_hashmap(hm)
+{
+    unfold valid_hashmap(hm);
+}
+
+method priority_queue_init(allocator: Ref, capacity: Int) returns (pq: Ref)
+    requires capacity >= 0
+    ensures acc(pq.arr_seq, write) && acc(pq.arr_len, write)
+    ensures pq.arr_len == 0
+{
+    pq := new(arr_seq, arr_len);
+    pq.arr_len := 0;
+    pq.arr_seq := Seq[Real](capacity);
+}
+
+method priority_queue_add(pq: Ref, item: Real)
+    requires acc(pq.arr_seq, write) && acc(pq.arr_len, write)
+    requires pq.arr_len >= 0
+    ensures acc(pq.arr_seq, write) && acc(pq.arr_len, write)
+{
+    var len: Int := pq.arr_len;
+    pq.arr_len := len + 1;
+}
+
+method priority_queue_peek(pq: Ref) returns (item: Real)
+    requires acc(pq.arr_seq, read) && acc(pq.arr_len, read)
+    requires pq.arr_len > 0
+{
+    item := pq.arr_seq[0];
+}
+
+method priority_queue_remove(pq: Ref) returns (item: Real)
+    requires acc(pq.arr_seq, write) && acc(pq.arr_len, write)
+    requires pq.arr_len > 0
+    ensures acc(pq.arr_seq, write) && acc(pq.arr_len, write)
+{
+    item := pq.arr_seq[0];
+    pq.arr_len := pq.arr_len - 1;
+}
+
+method priority_queue_count(pq: Ref) returns (count: Int)
+    requires acc(pq.arr_len, read)
+{
+    count := pq.arr_len;
+}
+
+method priority_queue_deinit(pq: Ref)
+    requires acc(pq.arr_seq, write) && acc(pq.arr_len, write)
+    ensures true
+{
+}
+
+method array_list_init(allocator: Ref) returns (al: Ref)
+    ensures acc(al.arr_seq, write) && acc(al.arr_len, write)
+    ensures al.arr_len == 0
+{
+    al := new(arr_seq, arr_len);
+    al.arr_len := 0;
+    al.arr_seq := Seq[Real](0);
+}
+
+method array_list_append(al: Ref, item: Real)
+    requires acc(al.arr_seq, write) && acc(al.arr_len, write)
+    ensures acc(al.arr_seq, write) && acc(al.arr_len, write)
+{
+    var len: Int := al.arr_len;
+    var seq: Seq[Real] := al.arr_seq;
+    seq := seq ++ Seq[Real](item);
+    al.arr_seq := seq;
+    al.arr_len := len + 1;
+}
+
+method array_list_items(al: Ref) returns (items: Seq[Real])
+    requires acc(al.arr_seq, read)
+{
+    items := al.arr_seq;
+}
+
+method array_list_deinit(al: Ref)
+    requires acc(al.arr_seq, write) && acc(al.arr_len, write)
+    ensures true
+{
+}
+
+method mem_sort_int(arr: Seq[Int]) returns (sorted: Seq[Int])
+    ensures |sorted| == |arr|
+{
+    var n: Int := |arr|;
+    sorted := arr;
+    
+    var i: Int := 0;
+    while i < n - 1
+        invariant 0 <= i && i < n
+        invariant |sorted| == n
+    {
+        var j: Int := 0;
+        while j < n - i - 1
+            invariant 0 <= j && j <= n - i
+            invariant |sorted| == n
+        {
+            if sorted[j] > sorted[j + 1] {
+                var tmp: Int := sorted[j];
+                sorted := sorted[j := sorted[j + 1]];
+                sorted := sorted[j + 1 := tmp];
+            }
+            j := j + 1;
+        }
+        i := i + 1;
+    }
+}
+
+method mem_sort_real(arr: Seq[Real]) returns (sorted: Seq[Real])
+    ensures |sorted| == |arr|
+{
+    var n: Int := |arr|;
+    sorted := arr;
+    
+    var i: Int := 0;
+    while i < n - 1
+        invariant 0 <= i && i < n
+        invariant |sorted| == n
+    {
+        var j: Int := 0;
+        while j < n - i - 1
+            invariant 0 <= j && j <= n - i
+            invariant |sorted| == n
+        {
+            if sorted[j] > sorted[j + 1] {
+                var tmp: Real := sorted[j];
+                sorted := sorted[j := sorted[j + 1]];
+                sorted := sorted[j + 1 := tmp];
+            }
+            j := j + 1;
+        }
+        i := i + 1;
+    }
+}
+
+method mem_eql_int(a: Seq[Int], b: Seq[Int]) returns (equal: Bool)
+{
+    var len_a: Int := |a|;
+    var len_b: Int := |b|;
+    
+    if len_a != len_b {
+        equal := false;
+        return;
+    }
+    
+    var i: Int := 0;
+    while i < len_a
+        invariant 0 <= i && i <= len_a
+    {
+        if a[i] != b[i] {
+            equal := false;
+            return;
+        }
+        i := i + 1;
+    }
+    
+    equal := true;
+}
+
+method allocator_alloc(allocator: Ref, size: Int) returns (ptr: Ref)
+    requires size > 0
+    ensures acc(ptr.arr_seq, write) && acc(ptr.arr_len, write)
+    ensures ptr.arr_len == size
+{
+    ptr := new(arr_seq, arr_len);
+    ptr.arr_len := size;
+    ptr.arr_seq := Seq[Real](size);
+}
+
+method allocator_free(allocator: Ref, ptr: Ref)
+    requires acc(ptr.arr_seq, write) && acc(ptr.arr_len, write)
+    ensures true
+{
+}
+
+method allocator_dupe(allocator: Ref, src: Seq[Int]) returns (dup: Seq[Int])
+    ensures |dup| == |src|
+{
+    var n: Int := |src|;
+    dup := Seq[Int](n);
+    var i: Int := 0;
+    while i < n
+        invariant 0 <= i && i <= n
+        invariant |dup| == n
+    {
+        dup := dup[i := src[i]];
+        i := i + 1;
+    }
+}
+
+method math_clamp_real(val: Real, min_val: Real, max_val: Real) returns (result: Real)
+    ensures result >= min_val && result <= max_val
+{
+    result := f32_clamp(val, min_val, max_val);
+}
+
+method math_clamp_int(val: Int, min_val: Int, max_val: Int) returns (result: Int)
+    ensures result >= min_val && result <= max_val
+{
+    result := min_int(max_int(val, min_val), max_val);
+}
+
+method math_min_real(a: Real, b: Real) returns (result: Real)
+    ensures result <= a && result <= b
+{
+    if a < b {
+        result := a;
+    } else {
+        result := b;
+    }
+}
+
+method math_max_real(a: Real, b: Real) returns (result: Real)
+    ensures result >= a && result >= b
+{
+    if a > b {
+        result := a;
+    } else {
+        result := b;
+    }
+}
+
+method math_min_int(a: Int, b: Int) returns (result: Int)
+    ensures result <= a && result <= b
+{
+    result := min_int(a, b);
+}
+
+method math_max_int(a: Int, b: Int) returns (result: Int)
+    ensures result >= a && result >= b
+{
+    result := max_int(a, b);
+}
+
+method math_sqrt_real(val: Real) returns (result: Real)
+    requires val >= 0.0
+    ensures result >= 0.0
+{
+    result := f32_sqrt(val);
+}
+
+method math_mul_int(a: Int, b: Int) returns (result: Int, overflow: Bool)
+{
+    result := a * b;
+    overflow := false;
+}
+
+method math_is_nan(val: Real) returns (is_nan: Bool)
+{
+    is_nan := f32_is_nan(val);
+}
+
+method math_is_inf(val: Real) returns (is_inf: Bool)
+{
+    is_inf := f32_is_inf(val);
+}
+
+method math_order(a: Real, b: Real) returns (order: Int)
+    ensures order == -1 || order == 0 || order == 1
+{
+    if a < b {
+        order := -1;
+    } else if a > b {
+        order := 1;
+    } else {
+        order := 0;
+    }
+}
+
+method reader_read(reader: Ref, buffer: Seq[Int]) returns (bytes_read: Int, err: Bool)
+    ensures bytes_read >= 0
+    ensures bytes_read <= |buffer|
+{
+    bytes_read := 0;
+    err := false;
+}
+
+function shape_dims_match(shape1: Seq[Int], shape2: Seq[Int]): Bool
+{
+    |shape1| == |shape2| && shape_equal_recursive(shape1, shape2, 0)
+}
+
+function shape_equal_recursive(shape1: Seq[Int], shape2: Seq[Int], idx: Int): Bool
+    decreases |shape1| - idx
+{
+    idx >= |shape1| || (shape1[idx] == shape2[idx] && shape_equal_recursive(shape1, shape2, idx + 1))
+}
+
+method test_ranker_score()
+{
+    var allocator: Ref := new(arr_seq, arr_len);
+    var ranker: Ref := ranker_init(allocator, 4, 8, 42);
+    var ssi: Ref := ssi_init(allocator);
+    ssi_add_sequence(ssi, Seq[Int](1, 2, 3), 0, false);
+    var score: Real := score_sequence(ranker, Seq[Int](1, 2), ssi);
+    assert score >= 0.0;
+    ranker_deinit(ranker);
+    ssi_deinit(ssi);
+}
+
+method test_minhash_signature_deterministic()
+{
+    var allocator: Ref := new(arr_seq, arr_len);
+    var ranker: Ref := ranker_init(allocator, 1, 32, 42);
+    var sig1: Seq[Int] := min_hash_signature(ranker, Seq[Int](1, 2, 3));
+    var sig2: Seq[Int] := min_hash_signature(ranker, Seq[Int](1, 2, 3));
+    assert |sig1| == |sig2|;
+    ranker_deinit(ranker);
+}
+
+method test_jaccard_similarity_from_signatures()
+{
+    var allocator: Ref := new(arr_seq, arr_len);
+    var ranker: Ref := ranker_init(allocator, 1, 32, 42);
+    var sig1: Seq[Int] := min_hash_signature(ranker, Seq[Int](1, 2, 3));
+    var sig2: Seq[Int] := min_hash_signature(ranker, Seq[Int](1, 2, 3));
+    var sim: Real := jaccard_similarity_from_signatures(sig1, sig2);
+    assert sim >= 0.0 && sim <= 1.0;
+    ranker_deinit(ranker);
+}
+
+method test_token_diversity()
+{
+    var allocator: Ref := new(arr_seq, arr_len);
+    var ranker: Ref := ranker_init(allocator, 1, 1, 42);
+    var div1: Real := compute_token_diversity(ranker, Seq[Int](1, 1, 1, 1));
+    var div2: Real := compute_token_diversity(ranker, Seq[Int](1, 2, 3, 4));
+    assert div2 >= div1;
+    ranker_deinit(ranker);
+}
+
+method test_token_overlap()
+{
+    var allocator: Ref := new(arr_seq, arr_len);
+    var ranker: Ref := ranker_init(allocator, 1, 1, 42);
+    var overlap: Real := compute_token_overlap(ranker, Seq[Int](1, 2, 3), Seq[Int](2, 3, 4));
+    assert overlap > 0.0 && overlap <= 1.0;
+    ranker_deinit(ranker);
+}
+
+method test_estimate_jaccard()
+{
+    var allocator: Ref := new(arr_seq, arr_len);
+    var set1: Ref := bitset_init(allocator, 128);
+    bitset_set(set1, 0);
+    bitset_set(set1, 64);
+    var set2: Ref := bitset_init(allocator, 128);
+    bitset_set(set2, 0);
+    var est: Real := estimate_jaccard(set1, set2);
+    assert est >= 0.0 && est <= 1.0;
+    bitset_deinit(set1);
+    bitset_deinit(set2);
+}
+
+method test_vector_cosine_score()
+{
+    var allocator: Ref := new(arr_seq, arr_len);
+    var emb: Ref := tensor_init(allocator, Seq[Int](3));
+    var qemb: Ref := tensor_init(allocator, Seq[Int](3));
+    var score: Real := vector_score(emb, qemb);
+    assert score >= -1.0 && score <= 1.0;
+    tensor_deinit(emb);
+    tensor_deinit(qemb);
+}
+
+method test_dot_product_score()
+{
+    var allocator: Ref := new(arr_seq, arr_len);
+    var emb: Ref := tensor_init(allocator, Seq[Int](3));
+    var qemb: Ref := tensor_init(allocator, Seq[Int](3));
+    var score: Real := dot_product_score(emb, qemb);
+    tensor_deinit(emb);
+    tensor_deinit(qemb);
+}
+
+method test_weighted_average()
+{
+    var scores: Seq[Real] := Seq[Real](0.5, 0.8, 0.3);
+    var weights: Seq[Real] := Seq[Real](1.0, 2.0, 1.0);
+    var avg: Real := weighted_average(scores, weights);
+    assert avg > 0.0 && avg < 1.0;
+}
+
+method test_exponential_decay()
+{
+    var scores: Seq[Real] := Seq[Real](1.0, 1.0, 1.0, 1.0);
+    var decayed: Seq[Real] := exponential_decay(scores, 0.9);
+    assert decayed[0] > decayed[1];
+    assert decayed[1] > decayed[2];
+    assert decayed[2] > decayed[3];
+}
+
+method test_normalize_scores()
+{
+    var scores: Seq[Real] := Seq[Real](10.0, 20.0, 30.0, 40.0);
+    var normalized: Seq[Real] := normalize_scores_static(scores);
+    assert normalized[0] >= 0.0;
+    assert normalized[3] <= 1.0;
+}
