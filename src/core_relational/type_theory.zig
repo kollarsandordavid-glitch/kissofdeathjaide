@@ -4,33 +4,18 @@ const Allocator = std.mem.Allocator;
 const StringHashMap = std.StringHashMap;
 const AutoHashMap = std.AutoHashMap;
 const Sha256 = std.crypto.hash.sha2.Sha256;
-const Complex = std.math.Complex;
-
-const nsir_core = @import("nsir_core.zig");
-const formal_verification = @import("formal_verification.zig");
 
 pub const TypeTheoryError = error{
     TypeMismatch,
     UnificationFailure,
-    SubtypingFailure,
     LinearityViolation,
-    UniverseLevelMismatch,
     InvalidTypeConstruction,
     VariableNotInContext,
     InvalidApplication,
     InvalidProjection,
-    InvalidInduction,
-    ProofVerificationFailed,
     CategoryLawViolation,
-    FunctorLawViolation,
-    MonadLawViolation,
-    NaturalityViolation,
     OutOfMemory,
-    InvalidDependentType,
-    ResourceLeaked,
-    ResourceDuplicated,
     InvalidIdentityElimination,
-    CircularTypeDependency,
 };
 
 pub const TypeKind = enum(u8) {
@@ -137,6 +122,7 @@ pub const RecordField = struct {
 
     pub fn init(allocator: Allocator, name: []const u8, field_type: *Type) !*Self {
         const field = try allocator.create(Self);
+        errdefer allocator.destroy(field);
         field.* = Self{
             .name = try allocator.dupe(u8, name),
             .field_type = field_type,
@@ -146,7 +132,10 @@ pub const RecordField = struct {
     }
 
     pub fn deinit(self: *Self) void {
+        self.field_type.deinit();
+        self.allocator.destroy(self.field_type);
         self.allocator.free(self.name);
+        self.allocator.destroy(self);
     }
 
     pub fn clone(self: *const Self, allocator: Allocator) error{OutOfMemory}!*Self {
@@ -173,6 +162,7 @@ pub const Type = struct {
 
     pub fn init(allocator: Allocator, kind: TypeKind) !*Self {
         const t = try allocator.create(Self);
+        errdefer allocator.destroy(t);
         t.* = Self{
             .kind = kind,
             .name = "",
@@ -228,18 +218,21 @@ pub const Type = struct {
 
     pub fn initVariable(allocator: Allocator, name: []const u8) !*Self {
         const t = try Type.init(allocator, .VARIABLE);
+        errdefer t.deinit();
         t.name = try allocator.dupe(u8, name);
         return t;
     }
 
     pub fn initArray(allocator: Allocator, element_type: *Type) !*Self {
         const t = try Type.init(allocator, .ARRAY);
+        errdefer t.deinit();
         try t.parameters.append(element_type);
         return t;
     }
 
     pub fn initTuple(allocator: Allocator, types: []const *Type) !*Self {
         const t = try Type.init(allocator, .TUPLE);
+        errdefer t.deinit();
         for (types) |ty| {
             try t.parameters.append(ty);
         }
@@ -248,6 +241,7 @@ pub const Type = struct {
 
     pub fn initRecord(allocator: Allocator, fields: []const *RecordField) !*Self {
         const t = try Type.init(allocator, .RECORD);
+        errdefer t.deinit();
         for (fields) |field| {
             try t.fields.append(field);
         }
@@ -256,6 +250,7 @@ pub const Type = struct {
 
     pub fn initSum(allocator: Allocator, left: *Type, right: *Type) !*Self {
         const t = try Type.init(allocator, .SUM);
+        errdefer t.deinit();
         t.left_type = left;
         t.right_type = right;
         return t;
@@ -263,6 +258,7 @@ pub const Type = struct {
 
     pub fn initFunction(allocator: Allocator, domain: *Type, codomain: *Type) !*Self {
         const t = try Type.init(allocator, .FUNCTION);
+        errdefer t.deinit();
         t.left_type = domain;
         t.right_type = codomain;
         return t;
@@ -270,12 +266,14 @@ pub const Type = struct {
 
     pub fn initUniverse(allocator: Allocator, level: u32) !*Self {
         const t = try Type.init(allocator, .UNIVERSE);
+        errdefer t.deinit();
         t.universe_level = level;
         return t;
     }
 
     pub fn initQuantum(allocator: Allocator, base_type: *Type, dimension: u32) !*Self {
         const t = try Type.init(allocator, .QUANTUM_TYPE);
+        errdefer t.deinit();
         try t.parameters.append(base_type);
         t.quantum_dimension = dimension;
         return t;
@@ -283,6 +281,7 @@ pub const Type = struct {
 
     pub fn initApplication(allocator: Allocator, func_type: *Type, arg_type: *Type) !*Self {
         const t = try Type.init(allocator, .APPLICATION);
+        errdefer t.deinit();
         t.left_type = func_type;
         t.right_type = arg_type;
         return t;
@@ -299,7 +298,6 @@ pub const Type = struct {
         self.parameters.deinit();
         for (self.fields.items) |field| {
             field.deinit();
-            self.allocator.destroy(field);
         }
         self.fields.deinit();
         if (self.bound_variable) |bv| {
@@ -317,24 +315,42 @@ pub const Type = struct {
             right.deinit();
             self.allocator.destroy(right);
         }
+        self.allocator.destroy(self);
     }
 
     pub fn clone(self: *const Self, allocator: Allocator) error{OutOfMemory}!*Self {
         const t = try allocator.create(Self);
+        errdefer allocator.destroy(t);
         t.* = Self{
             .kind = self.kind,
-            .name = if (self.name.len > 0) try allocator.dupe(u8, self.name) else "",
+            .name = "",
             .parameters = ArrayList(*Type).init(allocator),
             .fields = ArrayList(*RecordField).init(allocator),
             .universe_level = self.universe_level,
-            .bound_variable = if (self.bound_variable) |bv| try allocator.dupe(u8, bv) else null,
-            .body_type = if (self.body_type) |body| try body.clone(allocator) else null,
-            .left_type = if (self.left_type) |left| try left.clone(allocator) else null,
-            .right_type = if (self.right_type) |right| try right.clone(allocator) else null,
+            .bound_variable = null,
+            .body_type = null,
+            .left_type = null,
+            .right_type = null,
             .quantum_dimension = self.quantum_dimension,
             .hash_cache = self.hash_cache,
             .allocator = allocator,
         };
+        errdefer t.deinit();
+        if (self.name.len > 0) {
+            t.name = try allocator.dupe(u8, self.name);
+        }
+        if (self.bound_variable) |bv| {
+            t.bound_variable = try allocator.dupe(u8, bv);
+        }
+        if (self.body_type) |body| {
+            t.body_type = try body.clone(allocator);
+        }
+        if (self.left_type) |left| {
+            t.left_type = try left.clone(allocator);
+        }
+        if (self.right_type) |right| {
+            t.right_type = try right.clone(allocator);
+        }
         for (self.parameters.items) |param| {
             try t.parameters.append(try param.clone(allocator));
         }
@@ -359,6 +375,15 @@ pub const Type = struct {
             const field = self.fields.items[field_idx];
             if (!std.mem.eql(u8, field.name, other.fields.items[field_idx].name)) return false;
             if (!field.field_type.equals(other.fields.items[field_idx].field_type)) return false;
+        }
+        if (self.bound_variable) |bv1| {
+            if (other.bound_variable) |bv2| {
+                if (!std.mem.eql(u8, bv1, bv2)) return false;
+            } else {
+                return false;
+            }
+        } else if (other.bound_variable != null) {
+            return false;
         }
         if (self.left_type != null and other.left_type != null) {
             if (!self.left_type.?.equals(other.left_type.?)) return false;
@@ -386,11 +411,19 @@ pub const Type = struct {
         hasher.update(&[_]u8{@intFromEnum(self.kind)});
         hasher.update(self.name);
         var level_bytes: [4]u8 = undefined;
-        std.mem.writeInt(u32, &level_bytes, self.universe_level, .Little);
+        std.mem.writeInt(u32, &level_bytes, self.universe_level, .little);
         hasher.update(&level_bytes);
         for (self.parameters.items) |param| {
             const param_hash = param.computeHash();
             hasher.update(&param_hash);
+        }
+        for (self.fields.items) |field| {
+            hasher.update(field.name);
+            const field_type_hash = field.field_type.computeHash();
+            hasher.update(&field_type_hash);
+        }
+        if (self.bound_variable) |bv| {
+            hasher.update(bv);
         }
         if (self.left_type) |left| {
             const left_hash = left.computeHash();
@@ -399,6 +432,10 @@ pub const Type = struct {
         if (self.right_type) |right| {
             const right_hash = right.computeHash();
             hasher.update(&right_hash);
+        }
+        if (self.body_type) |body| {
+            const body_hash = body.computeHash();
+            hasher.update(&body_hash);
         }
         var result: [32]u8 = undefined;
         hasher.final(&result);
@@ -448,24 +485,60 @@ pub const Type = struct {
     pub fn substitute(self: *Self, var_name: []const u8, replacement: *const Type) !void {
         if (self.kind == .VARIABLE and std.mem.eql(u8, self.name, var_name)) {
             const cloned = try replacement.clone(self.allocator);
-            self.allocator.free(self.name);
-            self.kind = cloned.kind;
-            self.name = cloned.name;
-            self.universe_level = cloned.universe_level;
+            errdefer cloned.deinit();
+            if (self.name.len > 0) {
+                self.allocator.free(self.name);
+            }
+            if (self.bound_variable) |bv| {
+                self.allocator.free(bv);
+            }
+            if (self.body_type) |body| {
+                body.deinit();
+                self.allocator.destroy(body);
+            }
+            if (self.left_type) |left| {
+                left.deinit();
+                self.allocator.destroy(left);
+            }
+            if (self.right_type) |right| {
+                right.deinit();
+                self.allocator.destroy(right);
+            }
             for (self.parameters.items) |p| {
                 p.deinit();
                 self.allocator.destroy(p);
             }
             self.parameters.deinit();
+            for (self.fields.items) |field| {
+                field.deinit();
+            }
+            self.fields.deinit();
+            self.kind = cloned.kind;
+            self.name = cloned.name;
+            self.universe_level = cloned.universe_level;
             self.parameters = cloned.parameters;
+            self.fields = cloned.fields;
+            self.bound_variable = cloned.bound_variable;
+            self.body_type = cloned.body_type;
             self.left_type = cloned.left_type;
             self.right_type = cloned.right_type;
-            self.body_type = cloned.body_type;
-            self.bound_variable = cloned.bound_variable;
+            self.quantum_dimension = cloned.quantum_dimension;
+            self.hash_cache = null;
+            cloned.name = "";
+            cloned.bound_variable = null;
+            cloned.body_type = null;
+            cloned.left_type = null;
+            cloned.right_type = null;
+            cloned.parameters = ArrayList(*Type).init(self.allocator);
+            cloned.fields = ArrayList(*RecordField).init(self.allocator);
+            cloned.deinit();
             self.allocator.destroy(cloned);
         } else {
             for (self.parameters.items) |param| {
                 try param.substitute(var_name, replacement);
+            }
+            for (self.fields.items) |field| {
+                try field.field_type.substitute(var_name, replacement);
             }
             if (self.left_type) |left| {
                 try left.substitute(var_name, replacement);
@@ -478,6 +551,7 @@ pub const Type = struct {
                     try body.substitute(var_name, replacement);
                 }
             }
+            self.hash_cache = null;
         }
     }
 
@@ -487,6 +561,9 @@ pub const Type = struct {
         }
         for (self.parameters.items) |param| {
             if (param.containsFreeVariable(var_name)) return true;
+        }
+        for (self.fields.items) |field| {
+            if (field.field_type.containsFreeVariable(var_name)) return true;
         }
         if (self.left_type) |left| {
             if (left.containsFreeVariable(var_name)) return true;
@@ -513,6 +590,7 @@ pub const TypeBinding = struct {
 
     pub fn init(allocator: Allocator, name: []const u8, bound_type: *Type) !*Self {
         const binding = try allocator.create(Self);
+        errdefer allocator.destroy(binding);
         binding.* = Self{
             .name = try allocator.dupe(u8, name),
             .bound_type = bound_type,
@@ -525,10 +603,15 @@ pub const TypeBinding = struct {
         self.allocator.free(self.name);
         self.bound_type.deinit();
         self.allocator.destroy(self.bound_type);
+        self.allocator.destroy(self);
     }
 
     pub fn clone(self: *const Self, allocator: Allocator) !*Self {
         const cloned_type = try self.bound_type.clone(allocator);
+        errdefer {
+            cloned_type.deinit();
+            allocator.destroy(cloned_type);
+        }
         return TypeBinding.init(allocator, self.name, cloned_type);
     }
 };
@@ -562,13 +645,18 @@ pub const TypeContext = struct {
     pub fn deinit(self: *Self) void {
         for (self.bindings.items) |binding| {
             binding.deinit();
-            self.allocator.destroy(binding);
         }
         self.bindings.deinit();
     }
 
     pub fn extend(self: *Self, name: []const u8, bound_type: *Type) !void {
-        const binding = try TypeBinding.init(self.allocator, name, bound_type);
+        const cloned_type = try bound_type.clone(self.allocator);
+        errdefer {
+            cloned_type.deinit();
+            self.allocator.destroy(cloned_type);
+        }
+        const binding = try TypeBinding.init(self.allocator, name, cloned_type);
+        errdefer binding.deinit();
         try self.bindings.append(binding);
     }
 
@@ -600,12 +688,14 @@ pub const TypeContext = struct {
 
     pub fn clone(self: *const Self, allocator: Allocator) !*Self {
         const ctx = try allocator.create(Self);
+        errdefer allocator.destroy(ctx);
         ctx.* = Self{
             .bindings = ArrayList(*TypeBinding).init(allocator),
-            .parent = self.parent,
+            .parent = if (self.parent) |p| try p.clone(allocator) else null,
             .allocator = allocator,
             .depth = self.depth,
         };
+        errdefer ctx.deinit();
         for (self.bindings.items) |binding| {
             try ctx.bindings.append(try binding.clone(allocator));
         }
@@ -614,6 +704,9 @@ pub const TypeContext = struct {
 
     pub fn merge(self: *Self, other: *const Self) !void {
         for (other.bindings.items) |binding| {
+            if (self.contains(binding.name)) {
+                return TypeTheoryError.VariableNotInContext;
+            }
             try self.bindings.append(try binding.clone(self.allocator));
         }
     }
@@ -679,13 +772,14 @@ pub const Term = struct {
         nat_val: u64,
         int_val: i64,
         real_val: f64,
-        string_val: []const u8,
+        string_val: []u8,
     };
 
     const Self = @This();
 
     pub fn init(allocator: Allocator, kind: TermKind) !*Self {
         const t = try allocator.create(Self);
+        errdefer allocator.destroy(t);
         t.* = Self{
             .kind = kind,
             .name = "",
@@ -700,12 +794,14 @@ pub const Term = struct {
 
     pub fn initVariable(allocator: Allocator, name: []const u8) !*Self {
         const t = try Term.init(allocator, .VARIABLE);
+        errdefer t.deinit();
         t.name = try allocator.dupe(u8, name);
         return t;
     }
 
     pub fn initLambda(allocator: Allocator, param: []const u8, body: *Term) !*Self {
         const t = try Term.init(allocator, .LAMBDA);
+        errdefer t.deinit();
         t.bound_variable = try allocator.dupe(u8, param);
         try t.sub_terms.append(body);
         return t;
@@ -713,6 +809,7 @@ pub const Term = struct {
 
     pub fn initApplication(allocator: Allocator, func: *Term, arg: *Term) !*Self {
         const t = try Term.init(allocator, .APPLICATION);
+        errdefer t.deinit();
         try t.sub_terms.append(func);
         try t.sub_terms.append(arg);
         return t;
@@ -720,6 +817,7 @@ pub const Term = struct {
 
     pub fn initPair(allocator: Allocator, first: *Term, second: *Term) !*Self {
         const t = try Term.init(allocator, .PAIR);
+        errdefer t.deinit();
         try t.sub_terms.append(first);
         try t.sub_terms.append(second);
         return t;
@@ -727,24 +825,28 @@ pub const Term = struct {
 
     pub fn initFirst(allocator: Allocator, pair: *Term) !*Self {
         const t = try Term.init(allocator, .FIRST);
+        errdefer t.deinit();
         try t.sub_terms.append(pair);
         return t;
     }
 
     pub fn initSecond(allocator: Allocator, pair: *Term) !*Self {
         const t = try Term.init(allocator, .SECOND);
+        errdefer t.deinit();
         try t.sub_terms.append(pair);
         return t;
     }
 
     pub fn initInl(allocator: Allocator, value: *Term) !*Self {
         const t = try Term.init(allocator, .INL);
+        errdefer t.deinit();
         try t.sub_terms.append(value);
         return t;
     }
 
     pub fn initInr(allocator: Allocator, value: *Term) !*Self {
         const t = try Term.init(allocator, .INR);
+        errdefer t.deinit();
         try t.sub_terms.append(value);
         return t;
     }
@@ -755,6 +857,7 @@ pub const Term = struct {
 
     pub fn initRefl(allocator: Allocator, witness: *Term) !*Self {
         const t = try Term.init(allocator, .REFL);
+        errdefer t.deinit();
         try t.sub_terms.append(witness);
         return t;
     }
@@ -765,24 +868,28 @@ pub const Term = struct {
 
     pub fn initSucc(allocator: Allocator, n: *Term) !*Self {
         const t = try Term.init(allocator, .SUCC);
+        errdefer t.deinit();
         try t.sub_terms.append(n);
         return t;
     }
 
     pub fn initLiteralNat(allocator: Allocator, value: u64) !*Self {
         const t = try Term.init(allocator, .LITERAL);
+        errdefer t.deinit();
         t.literal_value = .{ .nat_val = value };
         return t;
     }
 
     pub fn initLiteralBool(allocator: Allocator, value: bool) !*Self {
         const t = try Term.init(allocator, .LITERAL);
+        errdefer t.deinit();
         t.literal_value = .{ .bool_val = value };
         return t;
     }
 
     pub fn initAnnotation(allocator: Allocator, term: *Term, ann_type: *Type) !*Self {
         const t = try Term.init(allocator, .ANNOTATION);
+        errdefer t.deinit();
         try t.sub_terms.append(term);
         t.annotation_type = ann_type;
         return t;
@@ -810,19 +917,37 @@ pub const Term = struct {
                 else => {},
             }
         }
+        self.allocator.destroy(self);
     }
 
     pub fn clone(self: *const Self, allocator: Allocator) !*Self {
         const t = try allocator.create(Self);
+        errdefer allocator.destroy(t);
         t.* = Self{
             .kind = self.kind,
-            .name = if (self.name.len > 0) try allocator.dupe(u8, self.name) else "",
+            .name = "",
             .sub_terms = ArrayList(*Term).init(allocator),
-            .bound_variable = if (self.bound_variable) |bv| try allocator.dupe(u8, bv) else null,
-            .annotation_type = if (self.annotation_type) |ann| try ann.clone(allocator) else null,
-            .literal_value = self.literal_value,
+            .bound_variable = null,
+            .annotation_type = null,
+            .literal_value = null,
             .allocator = allocator,
         };
+        errdefer t.deinit();
+        if (self.name.len > 0) {
+            t.name = try allocator.dupe(u8, self.name);
+        }
+        if (self.bound_variable) |bv| {
+            t.bound_variable = try allocator.dupe(u8, bv);
+        }
+        if (self.annotation_type) |ann| {
+            t.annotation_type = try ann.clone(allocator);
+        }
+        if (self.literal_value) |lit| {
+            t.literal_value = switch (lit) {
+                .string_val => |s| LiteralValue{ .string_val = try allocator.dupe(u8, s) },
+                else => lit,
+            };
+        }
         for (self.sub_terms.items) |sub| {
             try t.sub_terms.append(try sub.clone(allocator));
         }
@@ -836,6 +961,39 @@ pub const Term = struct {
         var sub_idx: usize = 0;
         while (sub_idx < self.sub_terms.items.len) : (sub_idx += 1) {
             if (!self.sub_terms.items[sub_idx].equals(other.sub_terms.items[sub_idx])) return false;
+        }
+        if (self.bound_variable) |bv1| {
+            if (other.bound_variable) |bv2| {
+                if (!std.mem.eql(u8, bv1, bv2)) return false;
+            } else {
+                return false;
+            }
+        } else if (other.bound_variable != null) {
+            return false;
+        }
+        if (self.annotation_type) |ann1| {
+            if (other.annotation_type) |ann2| {
+                if (!ann1.equals(ann2)) return false;
+            } else {
+                return false;
+            }
+        } else if (other.annotation_type != null) {
+            return false;
+        }
+        if (self.literal_value) |lit1| {
+            if (other.literal_value) |lit2| {
+                switch (lit1) {
+                    .bool_val => |b1| if (lit2.bool_val != b1) return false,
+                    .nat_val => |n1| if (lit2.nat_val != n1) return false,
+                    .int_val => |i1| if (lit2.int_val != i1) return false,
+                    .real_val => |r1| if (lit2.real_val != r1) return false,
+                    .string_val => |s1| if (!std.mem.eql(u8, s1, lit2.string_val)) return false,
+                }
+            } else {
+                return false;
+            }
+        } else if (other.literal_value != null) {
+            return false;
         }
         return true;
     }
@@ -853,9 +1011,14 @@ pub const TypeJudgment = struct {
 
     pub fn init(allocator: Allocator, context: *TypeContext, term: *Term, inferred_type: *Type) !*Self {
         const j = try allocator.create(Self);
+        errdefer allocator.destroy(j);
+        const ctx_clone = try context.clone(allocator);
+        errdefer ctx_clone.deinit();
+        const term_clone = try term.clone(allocator);
+        errdefer term_clone.deinit();
         j.* = Self{
-            .context = context,
-            .term = term,
+            .context = ctx_clone,
+            .term = term_clone,
             .inferred_type = inferred_type,
             .is_valid = false,
             .derivation_depth = 0,
@@ -865,8 +1028,13 @@ pub const TypeJudgment = struct {
     }
 
     pub fn deinit(self: *Self) void {
+        self.context.deinit();
+        self.allocator.destroy(self.context);
+        self.term.deinit();
+        self.allocator.destroy(self.term);
         self.inferred_type.deinit();
         self.allocator.destroy(self.inferred_type);
+        self.allocator.destroy(self);
     }
 
     pub fn validate(self: *Self) bool {
@@ -875,13 +1043,23 @@ pub const TypeJudgment = struct {
     }
 
     fn checkWellFormedness(self: *const Self) bool {
-        return switch (self.term.kind) {
-            .VARIABLE => self.context.contains(self.term.name),
-            .UNIT => self.inferred_type.kind == .UNIT,
-            .ZERO => self.inferred_type.kind == .NAT,
-            .LITERAL => self.checkLiteralType(),
-            else => true,
-        };
+        switch (self.term.kind) {
+            .VARIABLE => return self.context.contains(self.term.name),
+            .UNIT => return self.inferred_type.kind == .UNIT,
+            .ZERO => return self.inferred_type.kind == .NAT,
+            .LITERAL => return self.checkLiteralType(),
+            .LAMBDA => return self.inferred_type.kind == .FUNCTION or self.inferred_type.kind == .DEPENDENT_FUNCTION,
+            .APPLICATION => return true,
+            .PAIR => return self.inferred_type.kind == .TUPLE or self.inferred_type.kind == .DEPENDENT_PAIR,
+            .FIRST => return true,
+            .SECOND => return true,
+            .INL => return true,
+            .INR => return true,
+            .SUCC => return self.inferred_type.kind == .NAT,
+            .REFL => return self.inferred_type.kind == .IDENTITY,
+            .ANNOTATION => return true,
+            else => return true,
+        }
     }
 
     fn checkLiteralType(self: *const Self) bool {
@@ -918,6 +1096,7 @@ pub const DependentPi = struct {
 
     pub fn init(allocator: Allocator, param_name: []const u8, param_type: *Type, return_type: *Type) !*Self {
         const pi = try allocator.create(Self);
+        errdefer allocator.destroy(pi);
         pi.* = Self{
             .param_name = try allocator.dupe(u8, param_name),
             .param_type = param_type,
@@ -934,10 +1113,12 @@ pub const DependentPi = struct {
         self.allocator.destroy(self.param_type);
         self.return_type.deinit();
         self.allocator.destroy(self.return_type);
+        self.allocator.destroy(self);
     }
 
     pub fn toType(self: *const Self, allocator: Allocator) !*Type {
         const t = try Type.init(allocator, .DEPENDENT_FUNCTION);
+        errdefer t.deinit();
         t.bound_variable = try allocator.dupe(u8, self.param_name);
         t.left_type = try self.param_type.clone(allocator);
         t.body_type = try self.return_type.clone(allocator);
@@ -947,6 +1128,7 @@ pub const DependentPi = struct {
 
     pub fn apply(self: *Self, arg: *const Type) !*Type {
         const result = try self.return_type.clone(self.allocator);
+        errdefer result.deinit();
         try result.substitute(self.param_name, arg);
         return result;
     }
@@ -961,6 +1143,7 @@ pub const DependentPi = struct {
     }
 
     pub fn equals(self: *const Self, other: *const Self) bool {
+        if (!std.mem.eql(u8, self.param_name, other.param_name)) return false;
         if (!self.param_type.equals(other.param_type)) return false;
         if (!self.return_type.equals(other.return_type)) return false;
         return true;
@@ -978,6 +1161,7 @@ pub const DependentSigma = struct {
 
     pub fn init(allocator: Allocator, fst_name: []const u8, fst_type: *Type, snd_type: *Type) !*Self {
         const sigma = try allocator.create(Self);
+        errdefer allocator.destroy(sigma);
         sigma.* = Self{
             .fst_name = try allocator.dupe(u8, fst_name),
             .fst_type = fst_type,
@@ -994,10 +1178,12 @@ pub const DependentSigma = struct {
         self.allocator.destroy(self.fst_type);
         self.snd_type.deinit();
         self.allocator.destroy(self.snd_type);
+        self.allocator.destroy(self);
     }
 
     pub fn toType(self: *const Self, allocator: Allocator) !*Type {
         const t = try Type.init(allocator, .DEPENDENT_PAIR);
+        errdefer t.deinit();
         t.bound_variable = try allocator.dupe(u8, self.fst_name);
         t.left_type = try self.fst_type.clone(allocator);
         t.body_type = try self.snd_type.clone(allocator);
@@ -1007,6 +1193,7 @@ pub const DependentSigma = struct {
 
     pub fn getSecondType(self: *Self, first_value: *const Type) !*Type {
         const result = try self.snd_type.clone(self.allocator);
+        errdefer result.deinit();
         try result.substitute(self.fst_name, first_value);
         return result;
     }
@@ -1021,6 +1208,7 @@ pub const DependentSigma = struct {
     }
 
     pub fn equals(self: *const Self, other: *const Self) bool {
+        if (!std.mem.eql(u8, self.fst_name, other.fst_name)) return false;
         if (!self.fst_type.equals(other.fst_type)) return false;
         if (!self.snd_type.equals(other.snd_type)) return false;
         return true;
@@ -1037,6 +1225,7 @@ pub const IdentityType = struct {
 
     pub fn init(allocator: Allocator, base_type: *Type, left: *Term, right: *Term) !*Self {
         const id = try allocator.create(Self);
+        errdefer allocator.destroy(id);
         id.* = Self{
             .base_type = base_type,
             .left_term = left,
@@ -1053,16 +1242,20 @@ pub const IdentityType = struct {
         self.allocator.destroy(self.left_term);
         self.right_term.deinit();
         self.allocator.destroy(self.right_term);
+        self.allocator.destroy(self);
     }
 
     pub fn toType(self: *const Self, allocator: Allocator) !*Type {
         const t = try Type.init(allocator, .IDENTITY);
+        errdefer t.deinit();
         try t.parameters.append(try self.base_type.clone(allocator));
         return t;
     }
 
     pub fn refl(allocator: Allocator, base_type: *Type, term: *Term) !*Self {
-        return IdentityType.init(allocator, base_type, term, try term.clone(allocator));
+        const cloned_term = try term.clone(allocator);
+        errdefer cloned_term.deinit();
+        return IdentityType.init(allocator, base_type, term, cloned_term);
     }
 
     pub fn symmetry(self: *const Self, allocator: Allocator) !*Self {
@@ -1077,6 +1270,9 @@ pub const IdentityType = struct {
     pub fn transitivity(self: *const Self, other: *const Self, allocator: Allocator) !*Self {
         if (!self.right_term.equals(other.left_term)) {
             return TypeTheoryError.InvalidIdentityElimination;
+        }
+        if (!self.base_type.equals(other.base_type)) {
+            return TypeTheoryError.TypeMismatch;
         }
         return IdentityType.init(
             allocator,
@@ -1109,6 +1305,7 @@ pub const UniverseType = struct {
 
     pub fn init(allocator: Allocator, level: u32) !*Self {
         const u = try allocator.create(Self);
+        errdefer allocator.destroy(u);
         u.* = Self{
             .level = level,
             .cumulative = true,
@@ -1118,7 +1315,7 @@ pub const UniverseType = struct {
     }
 
     pub fn deinit(self: *Self) void {
-        _ = self;
+        self.allocator.destroy(self);
     }
 
     pub fn toType(self: *const Self, allocator: Allocator) !*Type {
@@ -1133,11 +1330,13 @@ pub const UniverseType = struct {
         if (self.cumulative) {
             return other.level < self.level;
         }
-        return other.level == self.level - 1;
+        return if (self.level > 0) other.level == self.level - 1 else false;
     }
 
     pub fn lub(self: *const Self, other: *const Self, allocator: Allocator) !*Self {
-        return UniverseType.init(allocator, @max(self.level, other.level));
+        const res = try UniverseType.init(allocator, @max(self.level, other.level));
+        res.cumulative = self.cumulative and other.cumulative;
+        return res;
     }
 
     pub fn clone(self: *const Self, allocator: Allocator) !*Self {
@@ -1161,12 +1360,13 @@ pub const InductiveType = struct {
         result_type: *Type,
         allocator: Allocator,
 
-        pub fn init(allocator: Allocator, name: []const u8) !*Constructor {
+        pub fn init(allocator: Allocator, name: []const u8, result_type: *Type) !*Constructor {
             const c = try allocator.create(Constructor);
+            errdefer allocator.destroy(c);
             c.* = Constructor{
                 .name = try allocator.dupe(u8, name),
                 .arg_types = ArrayList(*Type).init(allocator),
-                .result_type = try Type.init(allocator, .VARIABLE),
+                .result_type = result_type,
                 .allocator = allocator,
             };
             return c;
@@ -1181,6 +1381,7 @@ pub const InductiveType = struct {
             self.arg_types.deinit();
             self.result_type.deinit();
             self.allocator.destroy(self.result_type);
+            self.allocator.destroy(self);
         }
 
         pub fn addArgType(self: *Constructor, arg_type: *Type) !void {
@@ -1188,13 +1389,13 @@ pub const InductiveType = struct {
         }
 
         pub fn clone(self: *const Constructor, allocator: Allocator) !*Constructor {
-            const c = try Constructor.init(allocator, self.name);
+            const result_type_clone = try self.result_type.clone(allocator);
+            errdefer result_type_clone.deinit();
+            const c = try Constructor.init(allocator, self.name, result_type_clone);
+            errdefer c.deinit();
             for (self.arg_types.items) |t| {
                 try c.arg_types.append(try t.clone(allocator));
             }
-            c.result_type.deinit();
-            allocator.destroy(c.result_type);
-            c.result_type = try self.result_type.clone(allocator);
             return c;
         }
     };
@@ -1203,6 +1404,7 @@ pub const InductiveType = struct {
 
     pub fn init(allocator: Allocator, name: []const u8) !*Self {
         const ind = try allocator.create(Self);
+        errdefer allocator.destroy(ind);
         ind.* = Self{
             .name = try allocator.dupe(u8, name),
             .constructors = ArrayList(*Constructor).init(allocator),
@@ -1218,7 +1420,6 @@ pub const InductiveType = struct {
         self.allocator.free(self.name);
         for (self.constructors.items) |c| {
             c.deinit();
-            self.allocator.destroy(c);
         }
         self.constructors.deinit();
         for (self.parameters.items) |p| {
@@ -1231,6 +1432,7 @@ pub const InductiveType = struct {
             self.allocator.destroy(i);
         }
         self.indices.deinit();
+        self.allocator.destroy(self);
     }
 
     pub fn addConstructor(self: *Self, constructor: *Constructor) !void {
@@ -1239,68 +1441,85 @@ pub const InductiveType = struct {
 
     pub fn initNat(allocator: Allocator) !*Self {
         const nat = try InductiveType.init(allocator, "Nat");
-        const zero = try Constructor.init(allocator, "zero");
-        zero.result_type.deinit();
-        allocator.destroy(zero.result_type);
-        zero.result_type = try Type.initNat(allocator);
+        errdefer nat.deinit();
+        const nat_type = try Type.initNat(allocator);
+        errdefer nat_type.deinit();
+        const zero = try Constructor.init(allocator, "zero", nat_type);
+        errdefer zero.deinit();
         try nat.addConstructor(zero);
-        const succ = try Constructor.init(allocator, "succ");
-        try succ.addArgType(try Type.initNat(allocator));
-        succ.result_type.deinit();
-        allocator.destroy(succ.result_type);
-        succ.result_type = try Type.initNat(allocator);
+        const succ_arg = try Type.initNat(allocator);
+        errdefer succ_arg.deinit();
+        const succ_result = try Type.initNat(allocator);
+        errdefer succ_result.deinit();
+        const succ = try Constructor.init(allocator, "succ", succ_result);
+        errdefer succ.deinit();
+        try succ.addArgType(succ_arg);
         try nat.addConstructor(succ);
         return nat;
     }
 
     pub fn initBool(allocator: Allocator) !*Self {
         const bool_type = try InductiveType.init(allocator, "Bool");
-        const true_ctor = try Constructor.init(allocator, "true");
-        true_ctor.result_type.deinit();
-        allocator.destroy(true_ctor.result_type);
-        true_ctor.result_type = try Type.initBool(allocator);
+        errdefer bool_type.deinit();
+        const true_type = try Type.initBool(allocator);
+        errdefer true_type.deinit();
+        const true_ctor = try Constructor.init(allocator, "true", true_type);
+        errdefer true_ctor.deinit();
         try bool_type.addConstructor(true_ctor);
-        const false_ctor = try Constructor.init(allocator, "false");
-        false_ctor.result_type.deinit();
-        allocator.destroy(false_ctor.result_type);
-        false_ctor.result_type = try Type.initBool(allocator);
+        const false_type = try Type.initBool(allocator);
+        errdefer false_type.deinit();
+        const false_ctor = try Constructor.init(allocator, "false", false_type);
+        errdefer false_ctor.deinit();
         try bool_type.addConstructor(false_ctor);
         return bool_type;
     }
 
     pub fn initList(allocator: Allocator, element_type: *Type) !*Self {
         const list = try InductiveType.init(allocator, "List");
-        try list.parameters.append(element_type);
-        const nil = try Constructor.init(allocator, "nil");
-        nil.result_type.deinit();
-        allocator.destroy(nil.result_type);
-        nil.result_type = try Type.initArray(allocator, try element_type.clone(allocator));
+        errdefer list.deinit();
+        const elem_clone = try element_type.clone(allocator);
+        errdefer elem_clone.deinit();
+        try list.parameters.append(elem_clone);
+        const array_type = try Type.initArray(allocator, try element_type.clone(allocator));
+        errdefer array_type.deinit();
+        const nil = try Constructor.init(allocator, "nil", array_type);
+        errdefer nil.deinit();
         try list.addConstructor(nil);
-        const cons = try Constructor.init(allocator, "cons");
-        try cons.addArgType(try element_type.clone(allocator));
-        try cons.addArgType(try Type.initArray(allocator, try element_type.clone(allocator)));
-        cons.result_type.deinit();
-        allocator.destroy(cons.result_type);
-        cons.result_type = try Type.initArray(allocator, try element_type.clone(allocator));
+        const cons_arg1 = try element_type.clone(allocator);
+        errdefer cons_arg1.deinit();
+        const cons_arg2 = try Type.initArray(allocator, try element_type.clone(allocator));
+        errdefer cons_arg2.deinit();
+        const cons_result = try Type.initArray(allocator, try element_type.clone(allocator));
+        errdefer cons_result.deinit();
+        const cons = try Constructor.init(allocator, "cons", cons_result);
+        errdefer cons.deinit();
+        try cons.addArgType(cons_arg1);
+        try cons.addArgType(cons_arg2);
         try list.addConstructor(cons);
         return list;
     }
 
     pub fn toType(self: *const Self, allocator: Allocator) !*Type {
         const t = try Type.init(allocator, .VARIABLE);
+        errdefer t.deinit();
         t.name = try allocator.dupe(u8, self.name);
         return t;
     }
 
     pub fn getRecursor(self: *const Self, motive_type: *Type, allocator: Allocator) !*Type {
+        const ind_type = try self.toType(allocator);
+        errdefer ind_type.deinit();
         var rec_type = try Type.initFunction(
             allocator,
-            try self.toType(allocator),
+            ind_type,
             try motive_type.clone(allocator),
         );
+        errdefer rec_type.deinit();
         for (self.constructors.items) |ctor| {
             const ctor_case_type = try self.buildConstructorCaseType(ctor, motive_type, allocator);
+            errdefer ctor_case_type.deinit();
             const new_rec = try Type.initFunction(allocator, ctor_case_type, rec_type);
+            rec_type.deinit();
             rec_type = new_rec;
         }
         return rec_type;
@@ -1308,20 +1527,23 @@ pub const InductiveType = struct {
 
     fn buildConstructorCaseType(self: *const Self, ctor: *Constructor, motive: *Type, allocator: Allocator) !*Type {
         _ = self;
-        if (ctor.arg_types.items.len == 0) {
-            return motive.clone(allocator);
-        }
         var result = try motive.clone(allocator);
-        var i: usize = ctor.arg_types.items.len;
+        errdefer result.deinit();
+        var i = ctor.arg_types.items.len;
         while (i > 0) {
             i -= 1;
-            result = try Type.initFunction(allocator, try ctor.arg_types.items[i].clone(allocator), result);
+            const arg_clone = try ctor.arg_types.items[i].clone(allocator);
+            errdefer arg_clone.deinit();
+            const new_result = try Type.initFunction(allocator, arg_clone, result);
+            result.deinit();
+            result = new_result;
         }
         return result;
     }
 
     pub fn clone(self: *const Self, allocator: Allocator) !*Self {
         const ind = try InductiveType.init(allocator, self.name);
+        errdefer ind.deinit();
         for (self.constructors.items) |c| {
             try ind.constructors.append(try c.clone(allocator));
         }
@@ -1338,7 +1560,6 @@ pub const InductiveType = struct {
 
 pub const TypeChecker = struct {
     context: TypeContext,
-    type_cache: AutoHashMap(u64, *Type),
     inference_count: u64,
     check_count: u64,
     unification_count: u64,
@@ -1349,7 +1570,6 @@ pub const TypeChecker = struct {
     pub fn init(allocator: Allocator) Self {
         return Self{
             .context = TypeContext.init(allocator),
-            .type_cache = AutoHashMap(u64, *Type).init(allocator),
             .inference_count = 0,
             .check_count = 0,
             .unification_count = 0,
@@ -1359,12 +1579,6 @@ pub const TypeChecker = struct {
 
     pub fn deinit(self: *Self) void {
         self.context.deinit();
-        var iter = self.type_cache.iterator();
-        while (iter.next()) |entry| {
-            entry.value_ptr.*.deinit();
-            self.allocator.destroy(entry.value_ptr.*);
-        }
-        self.type_cache.deinit();
     }
 
     pub fn extendContext(self: *Self, name: []const u8, bound_type: *Type) !void {
@@ -1400,7 +1614,10 @@ pub const TypeChecker = struct {
             .SUCC => self.inferSucc(ctx, term),
             .REFL => self.inferRefl(ctx, term),
             .ANNOTATION => self.inferAnnotation(term),
-            else => TypeTheoryError.InvalidTypeConstruction,
+            .CASE => TypeTheoryError.InvalidTypeConstruction,
+            .J_ELIMINATOR => TypeTheoryError.InvalidTypeConstruction,
+            .NAT_REC => TypeTheoryError.InvalidTypeConstruction,
+            .LET => TypeTheoryError.InvalidTypeConstruction,
         };
     }
 
@@ -1432,9 +1649,11 @@ pub const TypeChecker = struct {
         var extended_ctx = TypeContext.initWithParent(self.allocator, ctx);
         defer extended_ctx.deinit();
         const param_type = if (term.annotation_type) |ann| try ann.clone(self.allocator) else try Type.initTop(self.allocator);
+        errdefer param_type.deinit();
         try extended_ctx.extend(term.bound_variable.?, param_type);
         const body_type = try self.inferType(&extended_ctx, term.sub_terms.items[0]);
-        return Type.initFunction(self.allocator, param_type, body_type);
+        errdefer body_type.deinit();
+        return Type.initFunction(self.allocator, try param_type.clone(self.allocator), body_type);
     }
 
     fn inferApplication(self: *Self, ctx: *TypeContext, term: *Term) InferError!*Type {
@@ -1456,17 +1675,24 @@ pub const TypeChecker = struct {
                 if (!self.subtype(arg_type, domain)) {
                     return TypeTheoryError.TypeMismatch;
                 }
-            }
-            if (func_type.right_type) |codomain| {
-                return codomain.clone(self.allocator);
+                if (func_type.right_type) |codomain| {
+                    return codomain.clone(self.allocator);
+                } else {
+                    return TypeTheoryError.InvalidTypeConstruction;
+                }
+            } else {
+                return TypeTheoryError.InvalidTypeConstruction;
             }
         } else if (func_type.kind == .DEPENDENT_FUNCTION) {
             if (func_type.body_type) |body| {
                 const result = try body.clone(self.allocator);
+                errdefer result.deinit();
                 if (func_type.bound_variable) |bv| {
                     try result.substitute(bv, arg_type);
                 }
                 return result;
+            } else {
+                return TypeTheoryError.InvalidTypeConstruction;
             }
         }
         return TypeTheoryError.InvalidApplication;
@@ -1477,8 +1703,10 @@ pub const TypeChecker = struct {
             return TypeTheoryError.InvalidTypeConstruction;
         }
         const fst_type = try self.inferType(ctx, term.sub_terms.items[0]);
+        errdefer fst_type.deinit();
         const snd_type = try self.inferType(ctx, term.sub_terms.items[1]);
-        return Type.initTuple(self.allocator, &[_]*Type{ fst_type, snd_type });
+        errdefer snd_type.deinit();
+        return Type.initTuple(self.allocator, &[_]*Type{fst_type, snd_type});
     }
 
     fn inferFirst(self: *Self, ctx: *TypeContext, term: *Term) InferError!*Type {
@@ -1524,8 +1752,10 @@ pub const TypeChecker = struct {
             return TypeTheoryError.InvalidTypeConstruction;
         }
         const inner_type = try self.inferType(ctx, term.sub_terms.items[0]);
-        const right_type = try Type.initBottom(self.allocator);
-        return Type.initSum(self.allocator, inner_type, right_type);
+        errdefer inner_type.deinit();
+        const bottom = try Type.initBottom(self.allocator);
+        errdefer bottom.deinit();
+        return Type.initSum(self.allocator, inner_type, bottom);
     }
 
     fn inferInr(self: *Self, ctx: *TypeContext, term: *Term) InferError!*Type {
@@ -1533,20 +1763,19 @@ pub const TypeChecker = struct {
             return TypeTheoryError.InvalidTypeConstruction;
         }
         const inner_type = try self.inferType(ctx, term.sub_terms.items[0]);
-        const left_type = try Type.initBottom(self.allocator);
-        return Type.initSum(self.allocator, left_type, inner_type);
+        errdefer inner_type.deinit();
+        const bottom = try Type.initBottom(self.allocator);
+        errdefer bottom.deinit();
+        return Type.initSum(self.allocator, bottom, inner_type);
     }
 
     fn inferSucc(self: *Self, ctx: *TypeContext, term: *Term) InferError!*Type {
         if (term.sub_terms.items.len == 0) {
             return TypeTheoryError.InvalidTypeConstruction;
         }
-        const inner_type = try self.inferType(ctx, term.sub_terms.items[0]);
-        defer {
-            inner_type.deinit();
-            self.allocator.destroy(inner_type);
-        }
-        if (inner_type.kind != .NAT) {
+        const n_type = try self.inferType(ctx, term.sub_terms.items[0]);
+        defer n_type.deinit();
+        if (n_type.kind != .NAT) {
             return TypeTheoryError.TypeMismatch;
         }
         return Type.initNat(self.allocator);
@@ -1557,8 +1786,10 @@ pub const TypeChecker = struct {
             return TypeTheoryError.InvalidTypeConstruction;
         }
         const witness_type = try self.inferType(ctx, term.sub_terms.items[0]);
-        const id_type = try Type.init(self.allocator, .IDENTITY);
-        try id_type.parameters.append(witness_type);
+        errdefer witness_type.deinit();
+        const id_type = try Type.init(allocator, .IDENTITY);
+        errdefer id_type.deinit();
+        try id_type.parameters.append(try witness_type.clone(self.allocator));
         return id_type;
     }
 
@@ -1570,7 +1801,6 @@ pub const TypeChecker = struct {
     }
 
     pub fn subtype(self: *Self, sub: *Type, super: *Type) bool {
-        _ = self;
         if (sub.equals(super)) return true;
         if (super.kind == .TOP) return true;
         if (sub.kind == .BOTTOM) return true;
@@ -1578,36 +1808,20 @@ pub const TypeChecker = struct {
         if (sub.kind == .INT and super.kind == .REAL) return true;
         if (sub.kind == .REAL and super.kind == .COMPLEX) return true;
         if (sub.kind == .FUNCTION and super.kind == .FUNCTION) {
-            if (sub.left_type != null and super.left_type != null and
-                sub.right_type != null and super.right_type != null)
-            {
-                const contra = super.left_type.?.equals(sub.left_type.?) or
-                    TypeChecker.isSubtypeStatic(super.left_type.?, sub.left_type.?);
-                const cov = sub.right_type.?.equals(super.right_type.?) or
-                    TypeChecker.isSubtypeStatic(sub.right_type.?, super.right_type.?);
-                return contra and cov;
+            if (sub.left_type != null and super.left_type != null and sub.right_type != null and super.right_type != null) {
+                return self.subtype(super.left_type.?, sub.left_type.?) and self.subtype(sub.right_type.?, super.right_type.?);
             }
         }
         if (sub.kind == .TUPLE and super.kind == .TUPLE) {
             if (sub.parameters.items.len != super.parameters.items.len) return false;
-            var tuple_idx: usize = 0;
-            while (tuple_idx < sub.parameters.items.len) : (tuple_idx += 1) {
-                if (!TypeChecker.isSubtypeStatic(sub.parameters.items[tuple_idx], super.parameters.items[tuple_idx])) return false;
+            for (sub.parameters.items, 0..) |s_param, i| {
+                if (!self.subtype(s_param, super.parameters.items[i])) return false;
             }
             return true;
         }
         if (sub.kind == .UNIVERSE and super.kind == .UNIVERSE) {
             return sub.universe_level <= super.universe_level;
         }
-        return false;
-    }
-
-    fn isSubtypeStatic(sub: *Type, super: *Type) bool {
-        if (sub.equals(super)) return true;
-        if (super.kind == .TOP) return true;
-        if (sub.kind == .BOTTOM) return true;
-        if (sub.kind == .NAT and super.kind == .INT) return true;
-        if (sub.kind == .INT and super.kind == .REAL) return true;
         return false;
     }
 
@@ -1629,23 +1843,30 @@ pub const TypeChecker = struct {
         if (t1.kind == t2.kind) {
             switch (t1.kind) {
                 .FUNCTION => {
-                    if (t1.left_type != null and t2.left_type != null and
-                        t1.right_type != null and t2.right_type != null)
-                    {
+                    if (t1.left_type != null and t2.left_type != null and t1.right_type != null and t2.right_type != null) {
                         const unified_domain = try self.unifyTypes(t1.left_type.?, t2.left_type.?);
+                        errdefer unified_domain.deinit();
                         const unified_codomain = try self.unifyTypes(t1.right_type.?, t2.right_type.?);
+                        errdefer unified_codomain.deinit();
                         return Type.initFunction(self.allocator, unified_domain, unified_codomain);
                     }
                 },
                 .TUPLE => {
                     if (t1.parameters.items.len == t2.parameters.items.len) {
                         var unified_params = ArrayList(*Type).init(self.allocator);
-                        var unify_idx: usize = 0;
-                        while (unify_idx < t1.parameters.items.len) : (unify_idx += 1) {
-                            const unified = try self.unifyTypes(t1.parameters.items[unify_idx], t2.parameters.items[unify_idx]);
+                        errdefer {
+                            for (unified_params.items) |p| {
+                                p.deinit();
+                                self.allocator.destroy(p);
+                            }
+                            unified_params.deinit();
+                        }
+                        for (t1.parameters.items, 0..) |p1, i| {
+                            const unified = try self.unifyTypes(p1, t2.parameters.items[i]);
                             try unified_params.append(unified);
                         }
                         const result = try Type.init(self.allocator, .TUPLE);
+                        errdefer result.deinit();
                         result.parameters = unified_params;
                         return result;
                     }
@@ -1653,6 +1874,7 @@ pub const TypeChecker = struct {
                 .ARRAY => {
                     if (t1.parameters.items.len > 0 and t2.parameters.items.len > 0) {
                         const unified_elem = try self.unifyTypes(t1.parameters.items[0], t2.parameters.items[0]);
+                        errdefer unified_elem.deinit();
                         return Type.initArray(self.allocator, unified_elem);
                     }
                 },
@@ -1677,8 +1899,6 @@ pub const TypeChecker = struct {
             .inference_count = self.inference_count,
             .check_count = self.check_count,
             .unification_count = self.unification_count,
-            .context_size = self.context.size(),
-            .cache_size = self.type_cache.count(),
         };
     }
 };
@@ -1687,50 +1907,6 @@ pub const TypeCheckerStatistics = struct {
     inference_count: u64,
     check_count: u64,
     unification_count: u64,
-    context_size: usize,
-    cache_size: usize,
-};
-
-pub const LogicalConnective = enum(u8) {
-    CONJUNCTION = 0,
-    DISJUNCTION = 1,
-    IMPLICATION = 2,
-    NEGATION = 3,
-    UNIVERSAL = 4,
-    EXISTENTIAL = 5,
-    TRUE = 6,
-    FALSE = 7,
-    BICONDITIONAL = 8,
-
-    const Self = @This();
-
-    pub fn toString(self: Self) []const u8 {
-        return switch (self) {
-            .CONJUNCTION => "∧",
-            .DISJUNCTION => "∨",
-            .IMPLICATION => "→",
-            .NEGATION => "¬",
-            .UNIVERSAL => "∀",
-            .EXISTENTIAL => "∃",
-            .TRUE => "⊤",
-            .FALSE => "⊥",
-            .BICONDITIONAL => "↔",
-        };
-    }
-
-    pub fn toTypeKind(self: Self) TypeKind {
-        return switch (self) {
-            .CONJUNCTION => .TUPLE,
-            .DISJUNCTION => .SUM,
-            .IMPLICATION => .FUNCTION,
-            .NEGATION => .FUNCTION,
-            .UNIVERSAL => .DEPENDENT_FUNCTION,
-            .EXISTENTIAL => .DEPENDENT_PAIR,
-            .TRUE => .UNIT,
-            .FALSE => .BOTTOM,
-            .BICONDITIONAL => .TUPLE,
-        };
-    }
 };
 
 pub const PropositionAsType = struct {
@@ -1741,10 +1917,23 @@ pub const PropositionAsType = struct {
     corresponding_type: ?*Type,
     allocator: Allocator,
 
+    pub const LogicalConnective = enum(u8) {
+        CONJUNCTION = 0,
+        DISJUNCTION = 1,
+        IMPLICATION = 2,
+        NEGATION = 3,
+        UNIVERSAL = 4,
+        EXISTENTIAL = 5,
+        TRUE = 6,
+        FALSE = 7,
+        BICONDITIONAL = 8,
+    };
+
     const Self = @This();
 
     pub fn init(allocator: Allocator, connective: LogicalConnective) !*Self {
         const p = try allocator.create(Self);
+        errdefer allocator.destroy(p);
         p.* = Self{
             .connective = connective,
             .sub_propositions = ArrayList(*PropositionAsType).init(allocator),
@@ -1758,18 +1947,21 @@ pub const PropositionAsType = struct {
 
     pub fn initTrue(allocator: Allocator) !*Self {
         const p = try PropositionAsType.init(allocator, .TRUE);
+        errdefer p.deinit();
         p.corresponding_type = try Type.initUnit(allocator);
         return p;
     }
 
     pub fn initFalse(allocator: Allocator) !*Self {
         const p = try PropositionAsType.init(allocator, .FALSE);
+        errdefer p.deinit();
         p.corresponding_type = try Type.initBottom(allocator);
         return p;
     }
 
     pub fn initConjunction(allocator: Allocator, left: *PropositionAsType, right: *PropositionAsType) !*Self {
         const p = try PropositionAsType.init(allocator, .CONJUNCTION);
+        errdefer p.deinit();
         try p.sub_propositions.append(left);
         try p.sub_propositions.append(right);
         if (left.corresponding_type != null and right.corresponding_type != null) {
@@ -1783,6 +1975,7 @@ pub const PropositionAsType = struct {
 
     pub fn initDisjunction(allocator: Allocator, left: *PropositionAsType, right: *PropositionAsType) !*Self {
         const p = try PropositionAsType.init(allocator, .DISJUNCTION);
+        errdefer p.deinit();
         try p.sub_propositions.append(left);
         try p.sub_propositions.append(right);
         if (left.corresponding_type != null and right.corresponding_type != null) {
@@ -1797,6 +1990,7 @@ pub const PropositionAsType = struct {
 
     pub fn initImplication(allocator: Allocator, antecedent: *PropositionAsType, consequent: *PropositionAsType) !*Self {
         const p = try PropositionAsType.init(allocator, .IMPLICATION);
+        errdefer p.deinit();
         try p.sub_propositions.append(antecedent);
         try p.sub_propositions.append(consequent);
         if (antecedent.corresponding_type != null and consequent.corresponding_type != null) {
@@ -1811,6 +2005,7 @@ pub const PropositionAsType = struct {
 
     pub fn initNegation(allocator: Allocator, inner: *PropositionAsType) !*Self {
         const p = try PropositionAsType.init(allocator, .NEGATION);
+        errdefer p.deinit();
         try p.sub_propositions.append(inner);
         if (inner.corresponding_type) |inner_type| {
             p.corresponding_type = try Type.initFunction(
@@ -1824,11 +2019,13 @@ pub const PropositionAsType = struct {
 
     pub fn initUniversal(allocator: Allocator, variable: []const u8, domain: *Type, body: *PropositionAsType) !*Self {
         const p = try PropositionAsType.init(allocator, .UNIVERSAL);
+        errdefer p.deinit();
         p.bound_variable = try allocator.dupe(u8, variable);
         p.predicate_type = try domain.clone(allocator);
         try p.sub_propositions.append(body);
         if (body.corresponding_type) |body_type| {
             const pi_type = try Type.init(allocator, .DEPENDENT_FUNCTION);
+            errdefer pi_type.deinit();
             pi_type.bound_variable = try allocator.dupe(u8, variable);
             pi_type.left_type = try domain.clone(allocator);
             pi_type.body_type = try body_type.clone(allocator);
@@ -1839,11 +2036,13 @@ pub const PropositionAsType = struct {
 
     pub fn initExistential(allocator: Allocator, variable: []const u8, domain: *Type, body: *PropositionAsType) !*Self {
         const p = try PropositionAsType.init(allocator, .EXISTENTIAL);
+        errdefer p.deinit();
         p.bound_variable = try allocator.dupe(u8, variable);
         p.predicate_type = try domain.clone(allocator);
         try p.sub_propositions.append(body);
         if (body.corresponding_type) |body_type| {
             const sigma_type = try Type.init(allocator, .DEPENDENT_PAIR);
+            errdefer sigma_type.deinit();
             sigma_type.bound_variable = try allocator.dupe(u8, variable);
             sigma_type.left_type = try domain.clone(allocator);
             sigma_type.body_type = try body_type.clone(allocator);
@@ -1869,6 +2068,7 @@ pub const PropositionAsType = struct {
             ct.deinit();
             self.allocator.destroy(ct);
         }
+        self.allocator.destroy(self);
     }
 
     pub fn toType(self: *const Self, allocator: Allocator) !*Type {
@@ -1880,6 +2080,7 @@ pub const PropositionAsType = struct {
 
     pub fn clone(self: *const Self, allocator: Allocator) !*Self {
         const p = try PropositionAsType.init(allocator, self.connective);
+        errdefer p.deinit();
         for (self.sub_propositions.items) |sub| {
             try p.sub_propositions.append(try sub.clone(allocator));
         }
@@ -1923,6 +2124,7 @@ pub const ProofTerm = struct {
 
     pub fn init(allocator: Allocator, kind: ProofKind, proposition: *PropositionAsType) !*Self {
         const pt = try allocator.create(Self);
+        errdefer allocator.destroy(pt);
         pt.* = Self{
             .kind = kind,
             .proposition = proposition,
@@ -1935,11 +2137,18 @@ pub const ProofTerm = struct {
     }
 
     pub fn deinit(self: *Self) void {
+        self.proposition.deinit();
+        self.allocator.destroy(self.proposition);
         for (self.sub_proofs.items) |sub| {
             sub.deinit();
             self.allocator.destroy(sub);
         }
         self.sub_proofs.deinit();
+        if (self.witness_term) |w| {
+            w.deinit();
+            self.allocator.destroy(w);
+        }
+        self.allocator.destroy(self);
     }
 
     pub fn validate(self: *Self) bool {
@@ -1992,6 +2201,7 @@ pub const ProofTerm = struct {
 
     pub fn clone(self: *const Self, allocator: Allocator) !*Self {
         const pt = try ProofTerm.init(allocator, self.kind, try self.proposition.clone(allocator));
+        errdefer pt.deinit();
         for (self.sub_proofs.items) |sub| {
             try pt.sub_proofs.append(try sub.clone(allocator));
         }
@@ -2004,17 +2214,16 @@ pub const ProofTerm = struct {
 pub const CategoryObject = struct {
     id: u64,
     name: []const u8,
-    object_type: ?*Type,
     allocator: Allocator,
 
     const Self = @This();
 
     pub fn init(allocator: Allocator, id: u64, name: []const u8) !*Self {
         const obj = try allocator.create(Self);
+        errdefer allocator.destroy(obj);
         obj.* = Self{
             .id = id,
             .name = try allocator.dupe(u8, name),
-            .object_type = null,
             .allocator = allocator,
         };
         return obj;
@@ -2022,20 +2231,15 @@ pub const CategoryObject = struct {
 
     pub fn deinit(self: *Self) void {
         self.allocator.free(self.name);
-        if (self.object_type) |t| {
-            t.deinit();
-            self.allocator.destroy(t);
-        }
+        self.allocator.destroy(self);
     }
 
     pub fn clone(self: *const Self, allocator: Allocator) !*Self {
-        const obj = try CategoryObject.init(allocator, self.id, self.name);
-        obj.object_type = if (self.object_type) |t| try t.clone(allocator) else null;
-        return obj;
+        return CategoryObject.init(allocator, self.id, self.name);
     }
 
     pub fn equals(self: *const Self, other: *const Self) bool {
-        return self.id == other.id;
+        return self.id == other.id and std.mem.eql(u8, self.name, other.name);
     }
 };
 
@@ -2044,7 +2248,6 @@ pub const Morphism = struct {
     name: []const u8,
     source: *CategoryObject,
     target: *CategoryObject,
-    morphism_type: ?*Type,
     is_identity: bool,
     allocator: Allocator,
 
@@ -2052,12 +2255,12 @@ pub const Morphism = struct {
 
     pub fn init(allocator: Allocator, id: u64, name: []const u8, source: *CategoryObject, target: *CategoryObject) !*Self {
         const m = try allocator.create(Self);
+        errdefer allocator.destroy(m);
         m.* = Self{
             .id = id,
             .name = try allocator.dupe(u8, name),
             .source = source,
             .target = target,
-            .morphism_type = null,
             .is_identity = false,
             .allocator = allocator,
         };
@@ -2072,15 +2275,15 @@ pub const Morphism = struct {
 
     pub fn deinit(self: *Self) void {
         self.allocator.free(self.name);
-        if (self.morphism_type) |t| {
-            t.deinit();
-            self.allocator.destroy(t);
-        }
+        self.allocator.destroy(self);
     }
 
     pub fn clone(self: *const Self, allocator: Allocator) !*Self {
-        const m = try Morphism.init(allocator, self.id, self.name, self.source, self.target);
-        m.morphism_type = if (self.morphism_type) |t| try t.clone(allocator) else null;
+        const source_clone = try self.source.clone(allocator);
+        errdefer source_clone.deinit();
+        const target_clone = try self.target.clone(allocator);
+        errdefer target_clone.deinit();
+        const m = try Morphism.init(allocator, self.id, self.name, source_clone, target_clone);
         m.is_identity = self.is_identity;
         return m;
     }
@@ -2094,7 +2297,7 @@ pub const Category = struct {
     name: []const u8,
     objects: ArrayList(*CategoryObject),
     morphisms: ArrayList(*Morphism),
-    compositions: AutoHashMap(u64, *Morphism),
+    compositions: AutoHashMap(u128, *Morphism),
     next_object_id: u64,
     next_morphism_id: u64,
     allocator: Allocator,
@@ -2103,11 +2306,12 @@ pub const Category = struct {
 
     pub fn init(allocator: Allocator, name: []const u8) !*Self {
         const cat = try allocator.create(Self);
+        errdefer allocator.destroy(cat);
         cat.* = Self{
             .name = try allocator.dupe(u8, name),
             .objects = ArrayList(*CategoryObject).init(allocator),
             .morphisms = ArrayList(*Morphism).init(allocator),
-            .compositions = AutoHashMap(u64, *Morphism).init(allocator),
+            .compositions = AutoHashMap(u128, *Morphism).init(allocator),
             .next_object_id = 1,
             .next_morphism_id = 1,
             .allocator = allocator,
@@ -2119,31 +2323,33 @@ pub const Category = struct {
         self.allocator.free(self.name);
         for (self.objects.items) |obj| {
             obj.deinit();
-            self.allocator.destroy(obj);
         }
         self.objects.deinit();
         for (self.morphisms.items) |m| {
             m.deinit();
-            self.allocator.destroy(m);
         }
         self.morphisms.deinit();
         self.compositions.deinit();
+        self.allocator.destroy(self);
     }
 
     pub fn addObject(self: *Self, name: []const u8) !*CategoryObject {
         const obj = try CategoryObject.init(self.allocator, self.next_object_id, name);
-        self.next_object_id += 1;
+        errdefer obj.deinit();
         try self.objects.append(obj);
+        self.next_object_id += 1;
         const identity = try Morphism.initIdentity(self.allocator, self.next_morphism_id, obj);
-        self.next_morphism_id += 1;
+        errdefer identity.deinit();
         try self.morphisms.append(identity);
+        self.next_morphism_id += 1;
         return obj;
     }
 
     pub fn addMorphism(self: *Self, name: []const u8, source: *CategoryObject, target: *CategoryObject) !*Morphism {
         const m = try Morphism.init(self.allocator, self.next_morphism_id, name, source, target);
-        self.next_morphism_id += 1;
+        errdefer m.deinit();
         try self.morphisms.append(m);
+        self.next_morphism_id += 1;
         return m;
     }
 
@@ -2151,7 +2357,7 @@ pub const Category = struct {
         if (!f.canCompose(g)) {
             return TypeTheoryError.CategoryLawViolation;
         }
-        const comp_key = f.id * 1000000 + g.id;
+        const comp_key: u128 = (@as(u128, f.id) << 64) | g.id;
         if (self.compositions.get(comp_key)) |cached| {
             return cached;
         }
@@ -2179,7 +2385,7 @@ pub const Category = struct {
         const gh = try self.compose(g, h);
         const fg_h = try self.compose(fg, h);
         const f_gh = try self.compose(f, gh);
-        return fg_h.source.equals(f_gh.source) and fg_h.target.equals(f_gh.target);
+        return fg_h.equals(f_gh);
     }
 
     pub fn verifyIdentityLaw(self: *const Self, f: *Morphism) bool {
@@ -2198,6 +2404,7 @@ pub const Category = struct {
 
     pub fn clone(self: *const Self, allocator: Allocator) !*Self {
         const cat = try Category.init(allocator, self.name);
+        errdefer cat.deinit();
         for (self.objects.items) |obj| {
             try cat.objects.append(try obj.clone(allocator));
         }
@@ -2222,6 +2429,7 @@ pub const Functor = struct {
 
     pub fn init(allocator: Allocator, name: []const u8, source: *Category, target: *Category) !*Self {
         const f = try allocator.create(Self);
+        errdefer allocator.destroy(f);
         f.* = Self{
             .name = try allocator.dupe(u8, name),
             .source_category = source,
@@ -2237,6 +2445,7 @@ pub const Functor = struct {
         self.allocator.free(self.name);
         self.object_mapping.deinit();
         self.morphism_mapping.deinit();
+        self.allocator.destroy(self);
     }
 
     pub fn mapObject(self: *Self, source_obj: *CategoryObject, target_obj: *CategoryObject) !void {
@@ -2275,8 +2484,7 @@ pub const Functor = struct {
         const mapped_fg = self.applyToMorphism(fg);
         if (mapped_f == null or mapped_g == null or mapped_fg == null) return false;
         const composed_mapped = try self.target_category.compose(mapped_f.?, mapped_g.?);
-        return composed_mapped.source.equals(mapped_fg.?.source) and
-            composed_mapped.target.equals(mapped_fg.?.target);
+        return composed_mapped.equals(mapped_fg.?);
     }
 
     pub fn verifyFunctorLaws(self: *Self) !bool {
@@ -2299,13 +2507,14 @@ pub const Functor = struct {
 
     pub fn clone(self: *const Self, allocator: Allocator) !*Self {
         const f = try Functor.init(allocator, self.name, self.source_category, self.target_category);
+        errdefer f.deinit();
         var obj_iter = self.object_mapping.iterator();
         while (obj_iter.next()) |entry| {
-            try f.object_mapping.put(entry.key_ptr.*, entry.value_ptr.*);
+            try f.object_mapping.put(entry.key_ptr.*, try entry.value_ptr.*.clone(allocator));
         }
         var morph_iter = self.morphism_mapping.iterator();
         while (morph_iter.next()) |entry| {
-            try f.morphism_mapping.put(entry.key_ptr.*, entry.value_ptr.*);
+            try f.morphism_mapping.put(entry.key_ptr.*, try entry.value_ptr.*.clone(allocator));
         }
         return f;
     }
@@ -2322,6 +2531,7 @@ pub const NaturalTransformation = struct {
 
     pub fn init(allocator: Allocator, name: []const u8, source: *Functor, target: *Functor) !*Self {
         const nt = try allocator.create(Self);
+        errdefer allocator.destroy(nt);
         nt.* = Self{
             .name = try allocator.dupe(u8, name),
             .source_functor = source,
@@ -2335,6 +2545,7 @@ pub const NaturalTransformation = struct {
     pub fn deinit(self: *Self) void {
         self.allocator.free(self.name);
         self.components.deinit();
+        self.allocator.destroy(self);
     }
 
     pub fn setComponent(self: *Self, obj: *CategoryObject, component: *Morphism) !void {
@@ -2354,7 +2565,7 @@ pub const NaturalTransformation = struct {
         if (mapped_f_source == null or mapped_f_target == null) return false;
         const left_path = try self.target_functor.target_category.compose(source_comp.?, mapped_f_target.?);
         const right_path = try self.target_functor.target_category.compose(mapped_f_source.?, target_comp.?);
-        return left_path.source.equals(right_path.source) and left_path.target.equals(right_path.target);
+        return left_path.equals(right_path);
     }
 
     pub fn verifyAllNaturality(self: *Self) !bool {
@@ -2368,9 +2579,10 @@ pub const NaturalTransformation = struct {
 
     pub fn clone(self: *const Self, allocator: Allocator) !*Self {
         const nt = try NaturalTransformation.init(allocator, self.name, self.source_functor, self.target_functor);
+        errdefer nt.deinit();
         var iter = self.components.iterator();
         while (iter.next()) |entry| {
-            try nt.components.put(entry.key_ptr.*, entry.value_ptr.*);
+            try nt.components.put(entry.key_ptr.*, try entry.value_ptr.*.clone(allocator));
         }
         return nt;
     }
@@ -2387,6 +2599,7 @@ pub const Monad = struct {
 
     pub fn init(allocator: Allocator, name: []const u8, t: *Functor, eta: *NaturalTransformation, mu: *NaturalTransformation) !*Self {
         const m = try allocator.create(Self);
+        errdefer allocator.destroy(m);
         m.* = Self{
             .name = try allocator.dupe(u8, name),
             .endofunctor = t,
@@ -2399,6 +2612,7 @@ pub const Monad = struct {
 
     pub fn deinit(self: *Self) void {
         self.allocator.free(self.name);
+        self.allocator.destroy(self);
     }
 
     pub fn verifyLeftUnitLaw(self: *Self, obj: *CategoryObject) !bool {
@@ -2412,7 +2626,7 @@ pub const Monad = struct {
         const left = try self.endofunctor.target_category.compose(t_eta.?, mu_obj.?);
         const id_t = self.endofunctor.target_category.getIdentity(t_obj.?);
         if (id_t == null) return false;
-        return left.source.equals(id_t.?.source) and left.target.equals(id_t.?.target);
+        return left.equals(id_t.?);
     }
 
     pub fn verifyRightUnitLaw(self: *Self, obj: *CategoryObject) !bool {
@@ -2424,7 +2638,7 @@ pub const Monad = struct {
         if (t_obj == null) return false;
         const id_t = self.endofunctor.target_category.getIdentity(t_obj.?);
         if (id_t == null) return false;
-        return right.source.equals(id_t.?.source) and right.target.equals(id_t.?.target);
+        return right.equals(id_t.?);
     }
 
     pub fn verifyAssociativityLaw(self: *Self, obj: *CategoryObject) !bool {
@@ -2438,7 +2652,7 @@ pub const Monad = struct {
         if (t_mu == null) return false;
         const left = try self.endofunctor.target_category.compose(mu_t_obj.?, mu_obj.?);
         const right = try self.endofunctor.target_category.compose(t_mu.?, mu_obj.?);
-        return left.source.equals(right.source) and left.target.equals(right.target);
+        return left.equals(right);
     }
 
     pub fn verifyMonadLaws(self: *Self) !bool {
@@ -2451,7 +2665,7 @@ pub const Monad = struct {
     }
 
     pub fn clone(self: *const Self, allocator: Allocator) !*Self {
-        return Monad.init(allocator, self.name, self.endofunctor, self.unit, self.multiplication);
+        return Monad.init(allocator, self.name, try self.endofunctor.clone(allocator), try self.unit.clone(allocator), try self.multiplication.clone(allocator));
     }
 };
 
@@ -2466,6 +2680,7 @@ pub const CartesianClosedCategory = struct {
 
     pub fn init(allocator: Allocator, base: *Category) !*Self {
         const ccc = try allocator.create(Self);
+        errdefer allocator.destroy(ccc);
         ccc.* = Self{
             .base_category = base,
             .terminal_object = null,
@@ -2485,6 +2700,7 @@ pub const CartesianClosedCategory = struct {
             ef.deinit();
             self.allocator.destroy(ef);
         }
+        self.allocator.destroy(self);
     }
 
     pub fn setTerminal(self: *Self, obj: *CategoryObject) void {
@@ -2508,7 +2724,8 @@ pub const CartesianClosedCategory = struct {
     }
 
     pub fn clone(self: *const Self, allocator: Allocator) !*Self {
-        const ccc = try CartesianClosedCategory.init(allocator, self.base_category);
+        const ccc = try CartesianClosedCategory.init(allocator, try self.base_category.clone(allocator));
+        errdefer ccc.deinit();
         ccc.terminal_object = self.terminal_object;
         ccc.product_functor = if (self.product_functor) |pf| try pf.clone(allocator) else null;
         ccc.exponential_functor = if (self.exponential_functor) |ef| try ef.clone(allocator) else null;
@@ -2561,6 +2778,7 @@ pub const LinearType = struct {
 
     pub fn init(allocator: Allocator, base_type: *Type, linearity: LinearityMode) !*Self {
         const lt = try allocator.create(Self);
+        errdefer allocator.destroy(lt);
         lt.* = Self{
             .base_type = base_type,
             .linearity = linearity,
@@ -2588,6 +2806,7 @@ pub const LinearType = struct {
     pub fn deinit(self: *Self) void {
         self.base_type.deinit();
         self.allocator.destroy(self.base_type);
+        self.allocator.destroy(self);
     }
 
     pub fn mustUseExactlyOnce(self: *const Self) bool {
@@ -2617,6 +2836,7 @@ pub const ResourceUsage = struct {
 
     pub fn init(allocator: Allocator, name: []const u8, linear_type: *LinearType) !*Self {
         const ru = try allocator.create(Self);
+        errdefer allocator.destroy(ru);
         ru.* = Self{
             .variable_name = try allocator.dupe(u8, name),
             .usage_count = 0,
@@ -2630,6 +2850,7 @@ pub const ResourceUsage = struct {
         self.allocator.free(self.variable_name);
         self.linear_type.deinit();
         self.allocator.destroy(self.linear_type);
+        self.allocator.destroy(self);
     }
 
     pub fn use(self: *Self) void {
@@ -2693,12 +2914,17 @@ pub const LinearTypeChecker = struct {
             self.allocator.destroy(entry.value_ptr.*);
         }
         self.resources.deinit();
+        for (self.violation_log.items) |v| {
+            self.allocator.free(v.variable_name);
+        }
         self.violation_log.deinit();
     }
 
     pub fn introduce(self: *Self, name: []const u8, linear_type: *LinearType) !void {
-        const usage = try ResourceUsage.init(self.allocator, name, linear_type);
         const key = try self.allocator.dupe(u8, name);
+        errdefer self.allocator.free(key);
+        const usage = try ResourceUsage.init(self.allocator, name, linear_type);
+        errdefer usage.deinit();
         try self.resources.put(key, usage);
     }
 
@@ -2744,12 +2970,7 @@ pub const LinearTypeChecker = struct {
                     .variable_name = usage.variable_name,
                     .expected_usage = usage.linear_type.linearity,
                     .actual_count = usage.usage_count,
-                    .violation_type = if (usage.usage_count == 0)
-                        .UNUSED
-                    else if (usage.usage_count > 1)
-                        .OVERUSED
-                    else
-                        .DROPPED,
+                    .violation_type = if (usage.usage_count == 0) .UNUSED else if (usage.usage_count > 1) .OVERUSED else .DROPPED,
                 };
                 self.violation_log.append(violation) catch {};
             }
@@ -2823,6 +3044,7 @@ pub const TypeProof = struct {
 
     pub fn init(allocator: Allocator, proof_type: TypeProofKind) !*Self {
         const p = try allocator.create(Self);
+        errdefer allocator.destroy(p);
         p.* = Self{
             .proof_type = proof_type,
             .judgment = null,
@@ -2857,6 +3079,7 @@ pub const TypeProof = struct {
             self.allocator.free(step);
         }
         self.derivation_steps.deinit();
+        self.allocator.destroy(self);
     }
 
     pub fn addStep(self: *Self, step: []const u8) !void {
@@ -2867,8 +3090,7 @@ pub const TypeProof = struct {
         self.is_valid = switch (self.proof_type) {
             .TYPE_JUDGMENT => if (self.judgment) |j| j.validate() else false,
             .SUBTYPING => self.sub_type != null and self.super_type != null,
-            .EQUALITY => self.sub_type != null and self.super_type != null and
-                self.sub_type.?.equals(self.super_type.?),
+            .EQUALITY => self.sub_type != null and self.super_type != null and self.sub_type.?.equals(self.super_type.?),
             else => self.derivation_steps.items.len > 0,
         };
         return self.is_valid;
@@ -2876,6 +3098,7 @@ pub const TypeProof = struct {
 
     pub fn clone(self: *const Self, allocator: Allocator) !*Self {
         const p = try TypeProof.init(allocator, self.proof_type);
+        errdefer p.deinit();
         p.judgment = if (self.judgment) |j| try j.clone(allocator) else null;
         p.sub_type = if (self.sub_type) |t| try t.clone(allocator) else null;
         p.super_type = if (self.super_type) |t| try t.clone(allocator) else null;
@@ -2899,6 +3122,7 @@ pub const ProofResult = struct {
 
     pub fn initSuccess(allocator: Allocator, proof: *TypeProof) !*Self {
         const r = try allocator.create(Self);
+        errdefer allocator.destroy(r);
         r.* = Self{
             .success = true,
             .proof = proof,
@@ -2911,6 +3135,7 @@ pub const ProofResult = struct {
 
     pub fn initFailure(allocator: Allocator, message: []const u8) !*Self {
         const r = try allocator.create(Self);
+        errdefer allocator.destroy(r);
         r.* = Self{
             .success = false,
             .proof = null,
@@ -2923,6 +3148,7 @@ pub const ProofResult = struct {
 
     pub fn initWithOwnedProof(allocator: Allocator, proof: *TypeProof) !*Self {
         const r = try allocator.create(Self);
+        errdefer allocator.destroy(r);
         r.* = Self{
             .success = true,
             .proof = proof,
@@ -2943,6 +3169,7 @@ pub const ProofResult = struct {
         if (self.error_message) |msg| {
             self.allocator.free(msg);
         }
+        self.allocator.destroy(self);
     }
 };
 
@@ -2999,6 +3226,7 @@ pub const TypeTheoryEngine = struct {
     pub fn proveTypeJudgment(self: *Self, ctx: *TypeContext, term: *Term, expected_type: *Type) !*ProofResult {
         self.proof_count += 1;
         const proof = try TypeProof.init(self.allocator, .TYPE_JUDGMENT);
+        errdefer proof.deinit();
         try proof.addStep("Begin type judgment proof");
         const inferred = self.type_checker.inferType(ctx, term) catch |err| {
             try proof.addStep("Type inference failed");
@@ -3032,6 +3260,7 @@ pub const TypeTheoryEngine = struct {
     pub fn proveSubtyping(self: *Self, sub: *Type, super: *Type) !*ProofResult {
         self.proof_count += 1;
         const proof = try TypeProof.init(self.allocator, .SUBTYPING);
+        errdefer proof.deinit();
         try proof.addStep("Begin subtyping proof");
         proof.sub_type = try sub.clone(self.allocator);
         proof.super_type = try super.clone(self.allocator);
@@ -3052,6 +3281,7 @@ pub const TypeTheoryEngine = struct {
     pub fn proveEquality(self: *Self, t1: *Type, t2: *Type) !*ProofResult {
         self.proof_count += 1;
         const proof = try TypeProof.init(self.allocator, .EQUALITY);
+        errdefer proof.deinit();
         try proof.addStep("Begin equality proof");
         proof.sub_type = try t1.clone(self.allocator);
         proof.super_type = try t2.clone(self.allocator);
@@ -3082,6 +3312,7 @@ pub const TypeTheoryEngine = struct {
     pub fn checkLinearUsage(self: *Self, term: *Term) !*ProofResult {
         self.proof_count += 1;
         const proof = try TypeProof.init(self.allocator, .LINEAR_USAGE);
+        errdefer proof.deinit();
         try proof.addStep("Begin linear usage check");
         const valid = try self.linear_checker.checkTerm(term);
         if (valid) {
@@ -3101,6 +3332,7 @@ pub const TypeTheoryEngine = struct {
     pub fn functorCheck(self: *Self, f: *Functor) !*ProofResult {
         self.proof_count += 1;
         const proof = try TypeProof.init(self.allocator, .FUNCTOR_LAW);
+        errdefer proof.deinit();
         try proof.addStep("Begin functor law verification");
         const laws_hold = try f.verifyFunctorLaws();
         if (laws_hold) {
@@ -3121,6 +3353,7 @@ pub const TypeTheoryEngine = struct {
     pub fn monadLaws(self: *Self, m: *Monad) !*ProofResult {
         self.proof_count += 1;
         const proof = try TypeProof.init(self.allocator, .MONAD_LAW);
+        errdefer proof.deinit();
         try proof.addStep("Begin monad law verification");
         const laws_hold = try m.verifyMonadLaws();
         if (laws_hold) {
